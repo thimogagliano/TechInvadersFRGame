@@ -12,6 +12,7 @@ class DialogueManager {
         this.portraits = {
             'blonde_guy': 0xffcc00,
             'green_hoodie': 0x00ff00,
+            'blonde_guy_comms': 0xff9900, // NEW: Slightly darker/different color for the comms version
             'stijn_spacesuit': 0xaa00ff,
             'james_spacesuit': 0x00ffff,
             'default': 0x4488ff
@@ -340,6 +341,9 @@ class MainScene extends Phaser.Scene {
         this.fireRate = 250;
         this.score = 0; // NEW: Track the player's score
         this.health = 3; // NEW: Track the player's health
+
+        this.tutorialState = 'movement'; // Tracks: 'movement', 'shooting', 'done'
+        this.keysPressed = { W: false, A: false, S: false, D: false };
     }
 
     // NEW: Catch the data sent from the OfficeScene
@@ -425,14 +429,7 @@ class MainScene extends Phaser.Scene {
         this.spacebar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.input.addPointer(2);
 
-        // 5. Setup Enemy Spawner
-        // This timer runs indefinitely, firing the spawnEnemy function every 1.5 seconds
-        this.time.addEvent({
-            delay: 1500,
-            callback: this.spawnEnemy,
-            callbackScope: this,
-            loop: true
-        });
+
 
         // --- UI: TEXT BALLOON PLACEHOLDER ---
         // Create a container to hold our UI elements on top of the game (Depth 100)
@@ -473,26 +470,6 @@ class MainScene extends Phaser.Scene {
         this.uiContainer.add(this.scoreText);
         this.hearts.forEach(heart => this.uiContainer.add(heart));
 
-        // 1. The white dialog box background
-        this.dialogBox = this.add.rectangle(0, 0, 100, 100, 0xffffff);
-        this.dialogBox.setOrigin(0, 0); // Top-left origin for easier positioning
-        this.dialogBox.setStrokeStyle(4, 0x000000); // Black border
-
-        // 2. The character portrait placeholder (a blue square)
-        this.portrait = this.add.rectangle(0, 0, 80, 80, 0x4488ff);
-        this.portrait.setOrigin(0, 0);
-        this.portrait.setStrokeStyle(2, 0x000000);
-
-        // 3. The placeholder text
-        this.dialogText = this.add.text(0, 0, "QUICK, HOP IN AND SAVE US!!", {
-            fontFamily: 'Courier, monospace', // Monospace mimics the retro pixel look
-            fontSize: '16px',
-            color: '#000000',
-            fontStyle: 'bold'
-        });
-
-        // Add all pieces to the container
-        this.uiContainer.add([this.dialogBox, this.portrait, this.dialogText]);
 
         // Call our custom resize function to position it perfectly on load
         this.resizeUI();
@@ -511,91 +488,6 @@ class MainScene extends Phaser.Scene {
         // Reset to center
         bgImage.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
     }
-
-    update(time, delta) {
-        this.player.setVelocity(0);
-        let isMoving = false;
-        let isShooting = false;
-
-        // --- KEYBOARD CONTROLS ---
-        if (this.cursors.left.isDown || this.wasd.A.isDown) {
-            this.player.setVelocityX(-this.playerSpeed);
-            isMoving = true;
-        } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
-            this.player.setVelocityX(this.playerSpeed);
-            isMoving = true;
-        }
-
-        if (this.cursors.up.isDown || this.wasd.W.isDown) {
-            this.player.setVelocityY(-this.playerSpeed);
-            isMoving = true;
-        } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
-            this.player.setVelocityY(this.playerSpeed);
-            isMoving = true;
-        }
-
-        if (this.spacebar.isDown) {
-            isShooting = true;
-        }
-
-        // --- TOUCH CONTROLS ---
-        this.input.manager.pointers.forEach(pointer => {
-            if (pointer.isDown) {
-                if (pointer.x < this.cameras.main.width / 2) {
-                    this.physics.moveTo(this.player, pointer.x, pointer.y, this.playerSpeed);
-                    isMoving = true;
-                }
-                if (pointer.x >= this.cameras.main.width / 2) {
-                    isShooting = true;
-                }
-            }
-        });
-
-        // --- MOVEMENT RESTRICTIONS (THE INVISIBLE BOUNDARIES) ---
-        // 1. Calculate the limits based on the current canvas height
-        const minY = this.cameras.main.height * 0.55; // Cannot go higher than the top 40% mark
-        const maxY = this.cameras.main.height * 0.80; // Cannot go lower than the bottom 15% mark
-
-        // 2. Clamp the player's vertical position
-        if (this.player.y < minY) {
-            this.player.y = minY;
-        } else if (this.player.y > maxY) {
-            this.player.y = maxY;
-        }
-
-        // --- SHOOTING ---
-        if (isShooting && time > this.lastFired) {
-            this.shootLaser();
-            this.lastFired = time + this.fireRate;
-        }
-
-        // --- CLEANUP (Prevent memory leaks) ---
-        // Destroy lasers that fly off the top
-        this.lasers.children.iterate((laser) => {
-            if (laser && laser.y < -10) {
-                laser.destroy();
-            }
-        });
-
-        // Destroy enemies that fly off the bottom
-        this.enemies.children.iterate((enemy) => {
-            if (enemy && enemy.y > this.cameras.main.height + 32) {
-                enemy.destroy();
-            }
-        });
-
-        // --- PARALLAX BACKGROUND SHIFT ---
-        if (this.player && this.player.active) {
-            // Calculate how far the player is from the center of the screen
-            const offsetX = (this.player.x - this.cameras.main.centerX);
-            const offsetY = (this.player.y - this.cameras.main.centerY);
-
-            // Shift the background 5% in the OPPOSITE direction
-            this.spaceBg.x = this.cameras.main.centerX - (offsetX * 0.05);
-            this.spaceBg.y = this.cameras.main.centerY - (offsetY * 0.05);
-        }
-    }
-
 
     shootLaser() {
         let laser = this.lasers.get(this.player.x, this.player.y - 20);
@@ -703,28 +595,203 @@ class MainScene extends Phaser.Scene {
         const marginX = (cam.width - boxWidth) / 2; // Center it horizontally
         const marginY = cam.height - boxHeight - (cam.height * 0.02); // Just above the bottom edge
 
-        // Position the white background box
-        this.dialogBox.setPosition(marginX, marginY);
-        this.dialogBox.setSize(boxWidth, boxHeight);
+        // Initialize the reusable Dialogue Manager for space!
+        this.dialogue = new DialogueManager(this);
+        this.scale.on('resize', () => this.dialogue.resize(this.cameras.main), this);
+        this.dialogue.resize(this.cameras.main);
 
-        // Position the portrait (Left side of the box)
-        const portraitSize = boxHeight * 0.75;
-        const portraitX = marginX + (boxHeight * 0.125);
-        const portraitY = marginY + (boxHeight * 0.125);
-        this.portrait.setPosition(portraitX, portraitY);
-        this.portrait.setSize(portraitSize, portraitSize);
+        // Start the interactive tutorial
+        this.startTutorial();
+    }
 
-        // Position the text (Right of the portrait)
-        const textX = portraitX + portraitSize + 15;
-        const textY = marginY + 15;
-        this.dialogText.setPosition(textX, textY);
+    startTutorial() {
+        // 1. Draw the floating keys on the screen
+        this.createTutorialUI();
 
-        // Ensure the text wraps so it doesn't spill out of the right side of the box
-        this.dialogText.setWordWrapWidth(boxWidth - portraitSize - 40);
+        // 2. Trigger the first instruction
+        this.dialogue.startDialogue([{
+            character: 'blonde_guy_comms',
+            text: "CAN YOU HEAR ME? GOOD! LET'S TEST THE THRUSTERS. USE W, A, S, D OR THE ARROW KEYS TO MOVE AROUND!",
+            waitForSpacebar: false // False means it stays on screen until we manually advance it!
+        }]);
+    }
 
-        // Dynamically scale the font size based on the screen height so it is always readable
-        const dynamicFontSize = Math.max(12, Math.min(24, cam.height * 0.025));
-        this.dialogText.setFontSize(dynamicFontSize + 'px');
+    createTutorialUI() {
+        // Create a container for the floating keys in the center-top of the screen
+        this.tutorialUI = this.add.container(this.cameras.main.centerX, this.cameras.main.height * 0.3).setDepth(50);
+
+        const keyStyle = { fontFamily: 'Courier, monospace', fontSize: '24px', color: '#000000', fontStyle: 'bold' };
+
+        // Helper function to draw a single key
+        const createKey = (x, y, label) => {
+            let bg = this.add.rectangle(x, y, 50, 50, 0xffffff).setStrokeStyle(4, 0x000000);
+            let text = this.add.text(x, y, label, keyStyle).setOrigin(0.5);
+            this.tutorialUI.add([bg, text]);
+            return bg; // Return the background so we can tint it green later
+        };
+
+        // Draw W, A, S, D in a cross formation
+        this.visualKeys = {
+            W: createKey(0, -60, 'W'),
+            A: createKey(-60, 0, 'A'),
+            S: createKey(0, 0, 'S'),
+            D: createKey(60, 0, 'D'),
+            SPACE: createKey(0, 80, 'SPACE')
+        };
+
+        // Make SPACE bar wider
+        this.visualKeys.SPACE.setSize(170, 50);
+
+        // Hide SPACE initially
+        this.visualKeys.SPACE.setVisible(false);
+        this.tutorialUI.getAt(9).setVisible(false); // Hides the "SPACE" text
+    }
+
+    startGameplay() {
+        // Start the enemy spawner timer that we removed from create()
+        this.spawnerTimer = this.time.addEvent({
+            delay: 1500,
+            callback: this.spawnEnemy,
+            callbackScope: this,
+            loop: true
+        });
+
+        // Give a final Good Luck message that the player can dismiss
+        this.dialogue.startDialogue([{
+            character: 'blonde_guy_comms',
+            text: "SYSTEMS ARE GREEN! HERE COME THE ROGUE ROBOTS. PROTECT EARTH!!",
+            waitForSpacebar: true
+        }]);
+    }
+
+    update(time, delta) {
+        this.player.setVelocity(0);
+        let isMoving = false;
+        let isShooting = false;
+
+        // --- KEYBOARD CONTROLS ---
+        if (this.cursors.left.isDown || this.wasd.A.isDown) {
+            this.player.setVelocityX(-this.playerSpeed);
+            isMoving = true;
+        } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+            this.player.setVelocityX(this.playerSpeed);
+            isMoving = true;
+        }
+
+        if (this.cursors.up.isDown || this.wasd.W.isDown) {
+            this.player.setVelocityY(-this.playerSpeed);
+            isMoving = true;
+        } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
+            this.player.setVelocityY(this.playerSpeed);
+            isMoving = true;
+        }
+
+        if (this.spacebar.isDown) {
+            isShooting = true;
+        }
+
+        // --- TOUCH CONTROLS ---
+        this.input.manager.pointers.forEach(pointer => {
+            if (pointer.isDown) {
+                if (pointer.x < this.cameras.main.width / 2) {
+                    this.physics.moveTo(this.player, pointer.x, pointer.y, this.playerSpeed);
+                    isMoving = true;
+                }
+                if (pointer.x >= this.cameras.main.width / 2) {
+                    isShooting = true;
+                }
+            }
+        });
+
+        // --- TUTORIAL PROGRESSION LOGIC ---
+        if (this.tutorialState === 'movement') {
+            // Check WASD *OR* Arrow Keys, and turn the corresponding UI box green
+            if ((this.wasd.W.isDown || this.cursors.up.isDown) && !this.keysPressed.W) {
+                this.keysPressed.W = true;
+                this.visualKeys.W.setFillStyle(0x00ff00);
+            }
+            if ((this.wasd.A.isDown || this.cursors.left.isDown) && !this.keysPressed.A) {
+                this.keysPressed.A = true;
+                this.visualKeys.A.setFillStyle(0x00ff00);
+            }
+            if ((this.wasd.S.isDown || this.cursors.down.isDown) && !this.keysPressed.S) {
+                this.keysPressed.S = true;
+                this.visualKeys.S.setFillStyle(0x00ff00);
+            }
+            if ((this.wasd.D.isDown || this.cursors.right.isDown) && !this.keysPressed.D) {
+                this.keysPressed.D = true;
+                this.visualKeys.D.setFillStyle(0x00ff00);
+            }
+
+            // If all 4 directions are checked off, advance to the shooting phase!
+            if (this.keysPressed.W && this.keysPressed.A && this.keysPressed.S && this.keysPressed.D) {
+                this.tutorialState = 'shooting';
+
+                this.visualKeys.SPACE.setVisible(true);
+                this.tutorialUI.getAt(9).setVisible(true);
+
+                this.dialogue.startDialogue([{
+                    character: 'blonde_guy_comms',
+                    text: "EXCELLENT MANEUVERING! NOW PRESS SPACEBAR TO TEST THE LASER CANNONS!",
+                    waitForSpacebar: false
+                }]);
+            }
+        } else if (this.tutorialState === 'shooting') {
+            if (this.spacebar.isDown) {
+                this.tutorialState = 'done';
+                this.visualKeys.SPACE.setFillStyle(0x00ff00);
+
+                // Wait 1 second so they can see the green spacebar, then start the game!
+                this.time.delayedCall(1000, () => {
+                    this.tutorialUI.destroy(); // Remove the floating keys
+                    this.startGameplay();
+                });
+            }
+        }
+
+        // --- MOVEMENT RESTRICTIONS (THE INVISIBLE BOUNDARIES) ---
+        // 1. Calculate the limits based on the current canvas height
+        const minY = this.cameras.main.height * 0.55; // Cannot go higher than the top 40% mark
+        const maxY = this.cameras.main.height * 0.80; // Cannot go lower than the bottom 15% mark
+
+        // 2. Clamp the player's vertical position
+        if (this.player.y < minY) {
+            this.player.y = minY;
+        } else if (this.player.y > maxY) {
+            this.player.y = maxY;
+        }
+
+        // --- SHOOTING ---
+        if (isShooting && time > this.lastFired) {
+            this.shootLaser();
+            this.lastFired = time + this.fireRate;
+        }
+
+        // --- CLEANUP (Prevent memory leaks) ---
+        // Destroy lasers that fly off the top
+        this.lasers.children.iterate((laser) => {
+            if (laser && laser.y < -10) {
+                laser.destroy();
+            }
+        });
+
+        // Destroy enemies that fly off the bottom
+        this.enemies.children.iterate((enemy) => {
+            if (enemy && enemy.y > this.cameras.main.height + 32) {
+                enemy.destroy();
+            }
+        });
+
+        // --- PARALLAX BACKGROUND SHIFT ---
+        if (this.player && this.player.active) {
+            // Calculate how far the player is from the center of the screen
+            const offsetX = (this.player.x - this.cameras.main.centerX);
+            const offsetY = (this.player.y - this.cameras.main.centerY);
+
+            // Shift the background 5% in the OPPOSITE direction
+            this.spaceBg.x = this.cameras.main.centerX - (offsetX * 0.05);
+            this.spaceBg.y = this.cameras.main.centerY - (offsetY * 0.05);
+        }
     }
 }
 
