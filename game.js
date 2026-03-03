@@ -6,21 +6,20 @@ class DialogueManager {
         this.isTyping = false;
         this.currentMessage = null;
         this.typewriterTimer = null;
+        this.onComplete = null; // NEW: Stores what to do when dialogue finishes
 
-        // --- PORTRAIT DICTIONARY (PLACEHOLDERS) ---
-        // We use colors for now. Later, you will swap setFillStyle with setTexture 
-        // to load your actual pixel art headshots based on these keys.
+        // --- PORTRAIT DICTIONARY ---
         this.portraits = {
-            'blonde_guy': 0xffcc00,     // Yellowish
-            'green_hoodie': 0x00ff00,   // Green
-            'stijn_spacesuit': 0xaa00ff,// Purple
-            'james_spacesuit': 0x00ffff,// Cyan
-            'default': 0x4488ff         // Blue
+            'blonde_guy': 0xffcc00,
+            'green_hoodie': 0x00ff00,
+            'stijn_spacesuit': 0xaa00ff,
+            'james_spacesuit': 0x00ffff,
+            'default': 0x4488ff
         };
 
         // --- BUILD THE UI ---
         this.uiContainer = this.scene.add.container(0, 0).setDepth(1000);
-        this.uiContainer.setVisible(false); // Hidden until called
+        this.uiContainer.setVisible(false);
 
         this.dialogBox = this.scene.add.rectangle(0, 0, 100, 100, 0xffffff);
         this.dialogBox.setOrigin(0, 0);
@@ -40,12 +39,10 @@ class DialogueManager {
         this.uiContainer.add([this.dialogBox, this.portrait, this.dialogText]);
 
         // --- SETUP INPUT (SPACEBAR) ---
-        // Using 'down' event so it only triggers once per press, not continuously
         this.spacebar = this.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.spacebar.on('down', () => this.handleInput());
     }
 
-    // Call this from your Scene's resize listener to keep it responsive
     resize(cam) {
         const boxHeight = cam.height * 0.15;
         const boxWidth = cam.width * 0.90;
@@ -65,48 +62,51 @@ class DialogueManager {
         const textY = marginY + 15;
         this.dialogText.setPosition(textX, textY);
 
-        // Dynamic word wrap
         this.dialogText.setWordWrapWidth(boxWidth - portraitSize - 40);
 
         const dynamicFontSize = Math.max(12, Math.min(24, cam.height * 0.025));
         this.dialogText.setFontSize(dynamicFontSize + 'px');
     }
 
-    // --- CORE LOGIC ---
+    // --- CORE LOGIC (Now accepts the onComplete callback!) ---
     startDialogue(messagesArray, onCompleteCallback = null) {
         this.queue = messagesArray;
         this.currentIndex = 0;
-        this.onComplete = onCompleteCallback; // Store the callback
+        this.onComplete = onCompleteCallback; // Store the transition function
         this.uiContainer.setVisible(true);
         this.showNextMessage();
     }
 
     showNextMessage() {
-        // If queue is empty, close the dialogue box
+        // If queue is empty, close the box and trigger the transition
         if (this.currentIndex >= this.queue.length) {
             this.uiContainer.setVisible(false);
-            if (this.onComplete) this.onComplete(); // Trigger callback when done
+
+            if (this.onComplete) {
+                // 1. Copy the callback function
+                const safeCallback = this.onComplete;
+                // 2. Erase the original so it can NEVER double-fire
+                this.onComplete = null;
+                // 3. Run the transition
+                safeCallback();
+            }
             return;
         }
 
         this.currentMessage = this.queue[this.currentIndex];
         this.currentIndex++;
 
-        // Swap portrait based on character key
         const color = this.portraits[this.currentMessage.character] || this.portraits['default'];
         this.portrait.setFillStyle(color);
 
-        // Reset text and typing state
         this.dialogText.setText("");
         this.isTyping = true;
 
         let charIndex = 0;
         const fullText = this.currentMessage.text;
 
-        // Clear existing timer if any
         if (this.typewriterTimer) this.typewriterTimer.remove();
 
-        // Start Typewriter Effect (30ms per letter)
         this.typewriterTimer = this.scene.time.addEvent({
             delay: 30,
             repeat: fullText.length - 1,
@@ -114,7 +114,7 @@ class DialogueManager {
                 this.dialogText.text += fullText[charIndex];
                 charIndex++;
                 if (charIndex === fullText.length) {
-                    this.isTyping = false; // Done typing
+                    this.isTyping = false;
                 }
             }
         });
@@ -122,21 +122,17 @@ class DialogueManager {
 
     // --- INPUT HANDLING ---
     handleInput() {
-        if (!this.uiContainer.visible) return; // Do nothing if box is hidden
+        if (!this.uiContainer.visible) return;
 
         if (this.isTyping) {
-            // STATE 1: Currently Typing -> Instantly reveal all text
             this.typewriterTimer.remove();
             this.dialogText.setText(this.currentMessage.text);
             this.isTyping = false;
         } else if (this.currentMessage.waitForSpacebar) {
-            // STATE 2: Done Typing & in Office Mode -> Advance to next message
             this.showNextMessage();
         }
-        // STATE 3: Done Typing but waitForSpacebar is FALSE (Space Mode) -> Do nothing.
     }
 
-    // Public method to advance manually (Used for Space mode tasks)
     next() {
         if (this.uiContainer.visible && !this.isTyping && !this.currentMessage.waitForSpacebar) {
             this.showNextMessage();
@@ -149,18 +145,54 @@ class OfficeScene extends Phaser.Scene {
         super({ key: 'OfficeScene' });
     }
 
+    // TODO: When you have your real images, uncomment this block to load them:
+    /*
+    preload() {
+        this.load.image('office_normal', 'assets/office_normal.png');
+        this.load.image('office_red', 'assets/office_red.png');
+    }
+    */
+
     create() {
-        // --- PLACEHOLDER BACKGROUND ---
-        // A gray rectangle representing the Future Ready HQ office floor
-        this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x4a4f5c).setOrigin(0, 0);
+        // --- PLACEHOLDER GENERATOR (Remove when using real images) ---
+        let gfx = this.make.graphics({ x: 0, y: 0, add: false });
+        gfx.fillStyle(0x4a4f5c, 1).fillRect(0, 0, 800, 600).generateTexture('office_normal', 800, 600);
+        gfx.fillStyle(0x880000, 1).fillRect(0, 0, 800, 600).generateTexture('office_red', 800, 600);
+        gfx.destroy();
 
-        // Initialize our reusable Dialogue Manager
+        // 1. Setup the Normal Office Background
+        this.bgNormal = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'office_normal').setDepth(-2);
+
+        // 2. Setup the Red Alert Background (Hidden initially)
+        this.bgRed = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'office_red').setDepth(-1);
+        this.bgRed.setVisible(false);
+
+        // Scale both to perfectly cover the screen
+        this.scaleBackgroundToCover(this.bgNormal);
+        this.scaleBackgroundToCover(this.bgRed);
+
+        // Handle resizing dynamically
+        this.scale.on('resize', () => {
+            this.scaleBackgroundToCover(this.bgNormal);
+            this.scaleBackgroundToCover(this.bgRed);
+            if (this.dialogue) this.dialogue.resize(this.cameras.main);
+        }, this);
+
+        // Initialize Dialogue
         this.dialogue = new DialogueManager(this);
-        this.scale.on('resize', () => this.dialogue.resize(this.cameras.main), this);
-        this.dialogue.resize(this.cameras.main); // Initial sizing
+        this.dialogue.resize(this.cameras.main);
 
-        // --- START THE NARRATIVE FLOW ---
         this.startWelcomeSequence();
+    }
+
+    // --- REUSABLE HELPER: SCALES IMAGES TO COVER SCREEN WITHOUT WARPING ---
+    scaleBackgroundToCover(bgImage) {
+        const scaleX = this.cameras.main.width / bgImage.width;
+        const scaleY = this.cameras.main.height / bgImage.height;
+        const maxScale = Math.max(scaleX, scaleY);
+
+        bgImage.setScale(maxScale);
+        bgImage.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
     }
 
     startWelcomeSequence() {
@@ -277,27 +309,24 @@ class OfficeScene extends Phaser.Scene {
     }
 
     startRedAlertSequence(playerName) {
-        // Visual Red Alert effect (pulse a red overlay)
-        let alertOverlay = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0xff0000, 0.3).setOrigin(0, 0);
-        this.tweens.add({
-            targets: alertOverlay,
-            alpha: 0.1, duration: 500, yoyo: true, repeat: -1
-        });
+        // --- THE STROBE EFFECT ---
+        const strobeEffect = () => {
+            // Only toggle if we are still in this scene
+            if (!this.scene.isActive('OfficeScene')) return;
 
-        // Queue the final office dialogue
+            this.bgRed.setVisible(!this.bgRed.visible);
+            this.time.delayedCall(Phaser.Math.Between(500, 1000), strobeEffect);
+        };
+        strobeEffect(); // Start the flashing
+
         this.dialogue.startDialogue([
-            {
-                character: 'blonde_guy',
-                text: "OH NO!! WE HAVE VERY BAD NEWS! ROGUE AI ROBOTS ARE ABOUT TO ATTACK THE EARTH!",
-                waitForSpacebar: true
-            },
-            {
-                character: 'blonde_guy',
-                text: "IT'S GOOD THAT YOU HAVE ARRIVED, WE HAVE BUILD A SPACESHIP THAT NEEDS TESTING! QUICK, HOP IN AND SAVE US!!",
-                waitForSpacebar: true
-            }
+            { character: 'blonde_guy', text: "OH NO!! WE HAVE VERY BAD NEWS! ROGUE AI ROBOTS ARE ABOUT TO ATTACK THE EARTH!", waitForSpacebar: true },
+            { character: 'blonde_guy', text: "IT'S GOOD THAT YOU HAVE ARRIVED, WE HAVE BUILD A SPACESHIP THAT NEEDS TESTING! QUICK, HOP IN AND SAVE US!!", waitForSpacebar: true }
         ], () => {
-            // When dialogue finishes, transition to the Space Gameplay!
+            // DIAGNOSTIC TOOL: Print all available scenes to the console
+            console.log("Phaser loaded these scenes:", this.scene.manager.keys);
+
+            // Transition
             this.scene.start('MainScene', { playerName: playerName });
         });
     }
@@ -319,8 +348,36 @@ class MainScene extends Phaser.Scene {
         this.playerName = data.playerName || "ROBOTFIGHTER01";
     }
 
+    // TODO: When you have your real space background, uncomment this:
+    /*
+    preload() {
+        this.load.image('space_bg', 'assets/space_background.png');
+    }
+    */
+
     create() {
-        // --- GENERATE PLACEHOLDER GRAPHICS ---
+        // --- BOMB-PROOF PARALLAX BACKGROUND ---
+        // Create a massive container (3000x3000) so it never shows edges when shifting
+        this.spaceBg = this.add.container(this.cameras.main.centerX, this.cameras.main.centerY).setDepth(-10);
+
+        // 1. Add the dark blue space void
+        let darkSpace = this.add.rectangle(0, 0, 3000, 3000, 0x0a0a2a);
+        this.spaceBg.add(darkSpace);
+
+        // 2. Add 150 randomly placed white stars into the container
+        for (let i = 0; i < 150; i++) {
+            let starX = Phaser.Math.Between(-1500, 1500);
+            let starY = Phaser.Math.Between(-1500, 1500);
+            let star = this.add.rectangle(starX, starY, 2, 2, 0xffffff);
+            this.spaceBg.add(star);
+        }
+
+        // // Handle resizing dynamically
+        // this.scale.on('resize', () => {
+        //     this.scaleBackgroundToCover(this.spaceBg, 1.1);
+        // }, this);
+
+        // NEW LINE: Create the graphics tool so we can draw the placeholders!
         let gfx = this.make.graphics({ x: 0, y: 0, add: false });
 
         // Player Ship (Green Triangle)
@@ -444,6 +501,17 @@ class MainScene extends Phaser.Scene {
         this.scale.on('resize', this.resizeUI, this);
     }
 
+    // --- REUSABLE HELPER (Modified to accept a padding multiplier) ---
+    scaleBackgroundToCover(bgImage, paddingMultiplier = 1.0) {
+        const scaleX = this.cameras.main.width / bgImage.width;
+        const scaleY = this.cameras.main.height / bgImage.height;
+        const maxScale = Math.max(scaleX, scaleY) * paddingMultiplier;
+
+        bgImage.setScale(maxScale);
+        // Reset to center
+        bgImage.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
+    }
+
     update(time, delta) {
         this.player.setVelocity(0);
         let isMoving = false;
@@ -515,7 +583,19 @@ class MainScene extends Phaser.Scene {
                 enemy.destroy();
             }
         });
+
+        // --- PARALLAX BACKGROUND SHIFT ---
+        if (this.player && this.player.active) {
+            // Calculate how far the player is from the center of the screen
+            const offsetX = (this.player.x - this.cameras.main.centerX);
+            const offsetY = (this.player.y - this.cameras.main.centerY);
+
+            // Shift the background 5% in the OPPOSITE direction
+            this.spaceBg.x = this.cameras.main.centerX - (offsetX * 0.05);
+            this.spaceBg.y = this.cameras.main.centerY - (offsetY * 0.05);
+        }
     }
+
 
     shootLaser() {
         let laser = this.lasers.get(this.player.x, this.player.y - 20);
