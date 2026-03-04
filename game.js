@@ -124,13 +124,23 @@ class DialogueManager {
 
     // --- INPUT HANDLING ---
     handleInput() {
+        // 1. Do nothing if the dialogue box is hidden
         if (!this.uiContainer.visible) return;
 
+        // 2. Do nothing if this is a mid-combat message (waitForSpacebar is false).
+        // This allows the player to mash Spacebar to shoot without affecting the text!
+        if (!this.currentMessage.waitForSpacebar) {
+            return;
+        }
+
+        // 3. Do nothing if the text is still typing. 
+        // This prevents the player from skipping the typewriter animation!
         if (this.isTyping) {
-            this.typewriterTimer.remove();
-            this.dialogText.setText(this.currentMessage.text);
-            this.isTyping = false;
-        } else if (this.currentMessage.waitForSpacebar) {
+            return;
+        }
+
+        // 4. Only advance if it is done typing AND it requires a spacebar press (like Cutscenes)
+        if (!this.isTyping && this.currentMessage.waitForSpacebar) {
             this.showNextMessage();
         }
     }
@@ -787,6 +797,13 @@ class MainScene extends Phaser.Scene {
             text: "SYSTEMS ARE GREEN! HERE COME THE ROGUE ROBOTS. PROTECT EARTH!!",
             waitForSpacebar: true
         }]);
+
+        // 3. Auto-close the text balloon after 8 seconds so it clears their screen
+        this.time.delayedCall(8000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+                this.dialogue.next();
+            }
+        });
     }
 
     triggerAICloning() {
@@ -828,8 +845,8 @@ class MainScene extends Phaser.Scene {
             waitForSpacebar: false // False so they don't have to stop playing to read it
         }]);
 
-        // 3. Auto-close the text balloon after 5 seconds so it clears their screen
-        this.time.delayedCall(5000, () => {
+        // 3. Auto-close the text balloon after 10 seconds so it clears their screen
+        this.time.delayedCall(10000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'green_hoodie') {
                 this.dialogue.next();
             }
@@ -852,8 +869,8 @@ class MainScene extends Phaser.Scene {
             waitForSpacebar: false // False so they can keep trying to fly!
         }]);
 
-        // Auto-close the text balloon after 6 seconds
-        this.time.delayedCall(6000, () => {
+        // Auto-close the text balloon after 10 seconds
+        this.time.delayedCall(10000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn') {
                 this.dialogue.next(); // Dismiss the balloon
             }
@@ -880,7 +897,7 @@ class MainScene extends Phaser.Scene {
         }]);
 
         // 3. Auto-close the text balloon after 6 seconds
-        this.time.delayedCall(6000, () => {
+        this.time.delayedCall(10000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
                 this.dialogue.next();
             }
@@ -909,8 +926,8 @@ class MainScene extends Phaser.Scene {
             waitForSpacebar: false
         }]);
 
-        // Auto-close text after 6 seconds
-        this.time.delayedCall(6000, () => {
+        // Auto-close text after 10 seconds
+        this.time.delayedCall(10000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'green_hoodie') {
                 this.dialogue.next();
             }
@@ -927,8 +944,8 @@ class MainScene extends Phaser.Scene {
             waitForSpacebar: false
         }]);
 
-        // Auto-close text after 6 seconds
-        this.time.delayedCall(6000, () => {
+        // Auto-close text after 10 seconds
+        this.time.delayedCall(10000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
                 this.dialogue.next();
             }
@@ -949,15 +966,81 @@ class MainScene extends Phaser.Scene {
                 onComplete: () => blockerIcon.destroy()
             });
 
-            // Destroy the ads one by one with a 0.5-second delay between each
+            // Destroy the ads one by one with a 1-second delay between each
             this.adsArray.forEach((ad, index) => {
-                this.time.delayedCall(index * 500, () => {
+                this.time.delayedCall(index * 1000, () => {
                     ad.destroy();
                 });
             });
 
             // Clear the array
             this.adsArray = [];
+
+            // NEW: Start the crazy final wave exactly as the ads clear!
+            this.triggerFinalWave();
+        });
+    }
+
+    triggerFinalWave() {
+        this.currentPhase = 8; // Move to Phase 8 (The Final Push)
+
+        // 1. Triple the spawn rate! (Drop delay from 600ms to a frantic 200ms)
+        if (this.spawnerTimer) this.spawnerTimer.remove();
+        this.spawnerTimer = this.time.addEvent({ delay: 200, callback: this.spawnEnemy, callbackScope: this, loop: true });
+
+        // 2. Wait 2 seconds, then start slowing it down
+        this.time.delayedCall(2000, () => {
+
+            this.spawnerTimer.remove();
+            this.spawnerTimer = this.time.addEvent({ delay: 600, callback: this.spawnEnemy, callbackScope: this, loop: true });
+
+            // 3. Wait another 4 seconds, slow it down more (stragglers)
+            this.time.delayedCall(4000, () => {
+                this.spawnerTimer.remove();
+                this.spawnerTimer = this.time.addEvent({ delay: 1500, callback: this.spawnEnemy, callbackScope: this, loop: true });
+
+                // 4. Wait a final 4 seconds, then SHUT IT OFF COMPLETELY
+                this.time.delayedCall(4000, () => {
+                    this.spawnerTimer.remove(); // No more robots will spawn!
+
+                    // 5. Wait 3 seconds for the remaining robots to fly off the bottom of the screen
+                    this.time.delayedCall(3000, () => {
+                        this.triggerBossTransition();
+                    });
+                });
+            });
+        });
+    }
+
+    triggerBossTransition() {
+        this.currentPhase = 9; // Move to Phase 9 (The Calm Before the Storm)
+
+        // 1. Trigger the False Victory dialogue
+        this.dialogue.startDialogue([{
+            character: 'blonde_guy_comms',
+            text: "PHASE 2 IS NOW OVER! WE HAVE SUCCESSFULLY EVOLVED AGAINST THE ROBOTS AND DEFEATED THEM!",
+            waitForSpacebar: true // Player must acknowledge their "victory"
+        }], () => {
+
+            // 2. This runs WHEN they press spacebar to close the victory message.
+            // Wait exactly 2 seconds in absolute silence...
+            this.time.delayedCall(2000, () => {
+
+                // 3. Trigger Stijn's panic warning!
+                this.dialogue.startDialogue([{
+                    character: 'stijn',
+                    text: "SOMETHING IS NOT RIGHT! A VERY BIG OBJECT SEEMS TO BE COMING YOUR WAY!!",
+                    waitForSpacebar: true
+                }], () => {
+
+                    // 4. This runs when they press spacebar on Stijn's warning.
+                    // THIS IS WHERE WE WILL SPAWN THE BOSS!
+                    console.log("BOSS FIGHT INITIATED!");
+                    // this.spawnBoss(); 
+
+                });
+            });
+
         });
     }
 
@@ -1042,9 +1125,9 @@ class MainScene extends Phaser.Scene {
                 this.visualKeys.SPACE.setFillStyle(0x00ff00);
 
                 // Wait 1 second so they can see the green spacebar, then start the game!
-                this.time.delayedCall(1000, () => {
+                this.time.delayedCall(3000, () => {
                     this.tutorialUI.destroy(); // Remove the floating keys
-                    this.startCutscene(); // <-- UPDATED THIS LINE
+                    this.startCutscene();
                 });
             }
         }
