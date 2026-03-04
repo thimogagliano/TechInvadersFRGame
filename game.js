@@ -11,10 +11,11 @@ class DialogueManager {
         // --- PORTRAIT DICTIONARY ---
         this.portraits = {
             'blonde_guy': 0xffcc00,
-            'green_hoodie': 0x00ff00,
             'blonde_guy_comms': 0xff9900, // NEW: Slightly darker/different color for the comms version
-            'stijn_spacesuit': 0xaa00ff,
+            'green_hoodie': 0x00ff00,
             'james_spacesuit': 0x00ffff,
+            'stijn': 0xff55aa,
+            'stijn_spacesuit': 0xaa00ff,
             'default': 0x4488ff
         };
 
@@ -353,6 +354,12 @@ class MainScene extends Phaser.Scene {
         // NEW: Firewall Variables
         this.hasFirewall = false;
         this.firewallHits = 0;
+
+        // NEW: Virus and Antivirus Variables
+        this.controlsReversed = false;
+        this.hasAntivirus = false;
+        this.firewallGivenTime = 0;
+        this.virusGivenTime = 0;
     }
 
     // NEW: Catch the data sent from the OfficeScene
@@ -413,7 +420,29 @@ class MainScene extends Phaser.Scene {
         gfx.fillStyle(0xff0000, 1);
         gfx.fillRect(0, 0, 32, 32);
         gfx.generateTexture('enemyRobot', 32, 32);
-        gfx.destroy(); // Destroy the graphics object when done making textures
+        gfx.clear(); // CHANGED: Changed from destroy() to clear() so we can keep drawing!
+
+        // NEW: Antivirus Rounded Square (Green Transparent)
+        gfx.fillStyle(0x00ff00, 0.3); // 30% opacity green
+        gfx.fillRoundedRect(0, 0, 44, 44, 8); // 8px rounded corners
+        gfx.lineStyle(2, 0x00ff00, 1); // Solid green border
+        gfx.strokeRoundedRect(0, 0, 44, 44, 8);
+        gfx.generateTexture('antivirus_aura', 44, 44);
+        gfx.clear();
+
+        // NEW: Little Shield Icon (White)
+        gfx.fillStyle(0xffffff, 1);
+        gfx.beginPath();
+        gfx.moveTo(0, 0);    // Top left
+        gfx.lineTo(12, 0);   // Top right
+        gfx.lineTo(12, 6);   // Middle right
+        gfx.lineTo(6, 14);   // Bottom point
+        gfx.lineTo(0, 6);    // Middle left
+        gfx.closePath();
+        gfx.fillPath();
+        gfx.generateTexture('shield_icon', 12, 14);
+        // Destroy when completely done
+        gfx.destroy();
 
         // --- CUTSCENE OVERLAY ---
         // Sits at depth 90 (hiding the gameplay, but behind the depth 100 UI)
@@ -758,6 +787,9 @@ class MainScene extends Phaser.Scene {
         this.hasFirewall = true;
         this.firewallHits = 0; // Reset hit counter
 
+        // NEW: Start the 20-second clock for the Virus!
+        this.firewallGivenTime = this.time.now;
+
         // 1. Draw the transparent blue firewall circle
         this.firewallVisual = this.add.circle(this.player.x, this.player.y, 35, 0x0088ff, 0.3);
         this.firewallVisual.setStrokeStyle(2, 0x00ffff); // Glowing cyan border
@@ -778,25 +810,76 @@ class MainScene extends Phaser.Scene {
         });
     }
 
+    triggerVirus(currentTime) {
+        this.currentPhase = 4; // Move to Phase 4
+        this.virusGivenTime = currentTime; // Start the 10-second survival clock
+        this.controlsReversed = true; // Flip the controls!
+
+        // Give the player a visual cue that something is wrong (glitch color)
+        this.player.setTint(0xaa00ff);
+        this.time.delayedCall(500, () => this.player.clearTint());
+
+        // NEW: Trigger Stijn's warning dialogue!
+        this.dialogue.startDialogue([{
+            character: 'stijn',
+            text: "WE HAVE JUST NOTICED THAT THE ROGUE AI ROBOTS HAVE DEVELOPED A COMPUTER VIRUS THAT REVERSES YOUR CONTROLS!",
+            waitForSpacebar: false // False so they can keep trying to fly!
+        }]);
+
+        // Auto-close the text balloon after 6 seconds
+        this.time.delayedCall(6000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn') {
+                this.dialogue.next(); // Dismiss the balloon
+            }
+        });
+    }
+
+    triggerAntivirus() {
+        this.currentPhase = 5; // Move to Phase 5
+        this.controlsReversed = false; // Fix the controls!
+        this.hasAntivirus = true;
+
+        // 1. Draw the Antivirus Visuals (Rounded square & Shield)
+        this.antivirusVisual = this.add.image(this.player.x, this.player.y, 'antivirus_aura').setDepth(11);
+        this.antivirusShield = this.add.image(this.player.x - 16, this.player.y - 16, 'shield_icon').setDepth(12);
+
+        // 2. Show the Comms Dialogue
+        this.dialogue.startDialogue([{
+            character: 'blonde_guy_comms',
+            text: "WE HAVE SENT YOU AN ANTIVIRUS UPDATE FOR THE SHIP!! THIS WILL TURN YOUR CONTROLS BACK TO NORMAL.",
+            waitForSpacebar: false
+        }]);
+
+        // 3. Auto-close the text balloon after 6 seconds
+        this.time.delayedCall(6000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+                this.dialogue.next();
+            }
+        });
+    }
+
     update(time, delta) {
         this.player.setVelocity(0);
         let isMoving = false;
         let isShooting = false;
 
         // --- KEYBOARD CONTROLS ---
+        // If controls are reversed, multiply the speed by -1
+        let currentSpeed = this.controlsReversed ? -this.playerSpeed : this.playerSpeed;
+
         if (this.cursors.left.isDown || this.wasd.A.isDown) {
-            this.player.setVelocityX(-this.playerSpeed);
+            this.player.setVelocityX(-currentSpeed);
             isMoving = true;
         } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
-            this.player.setVelocityX(this.playerSpeed);
+            this.player.setVelocityX(currentSpeed);
             isMoving = true;
         }
 
         if (this.cursors.up.isDown || this.wasd.W.isDown) {
-            this.player.setVelocityY(-this.playerSpeed);
+            this.player.setVelocityY(-currentSpeed);
             isMoving = true;
         } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
-            this.player.setVelocityY(this.playerSpeed);
+            this.player.setVelocityY(currentSpeed);
             isMoving = true;
         }
 
@@ -878,10 +961,28 @@ class MainScene extends Phaser.Scene {
             }
         }
 
-        // --- FIREWALL VISUAL TRACKING ---
-        // If the player has the firewall, make the blue circle follow the ship
+        // Phase 3 to Phase 4 (Trigger Virus after 20 seconds)
+        if (this.currentPhase === 3 && this.firewallGivenTime > 0) {
+            if (time - this.firewallGivenTime >= 20000) {
+                this.triggerVirus(time);
+            }
+        }
+
+        // Phase 4 to Phase 5 (Trigger Antivirus after 10 seconds of survival)
+        if (this.currentPhase === 4 && this.virusGivenTime > 0) {
+            if (time - this.virusGivenTime >= 10000) {
+                this.triggerAntivirus();
+            }
+        }
+
+        // Keep visual auras aligned with the ship
         if (this.hasFirewall && this.firewallVisual) {
             this.firewallVisual.setPosition(this.player.x, this.player.y);
+        }
+        if (this.hasAntivirus && this.antivirusVisual) {
+            this.antivirusVisual.setPosition(this.player.x, this.player.y);
+            // Put the shield in the top left corner of the aura
+            this.antivirusShield.setPosition(this.player.x - 18, this.player.y - 18);
         }
 
         // 2. Clamp the player's vertical position
