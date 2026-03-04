@@ -360,6 +360,11 @@ class MainScene extends Phaser.Scene {
         this.hasAntivirus = false;
         this.firewallGivenTime = 0;
         this.virusGivenTime = 0;
+
+        // NEW: Ad Pop-up Variables
+        this.antivirusGivenTime = 0;
+        this.adsGivenTime = 0;
+        this.adsArray = []; // Stores the ad images so we can delete them later
     }
 
     // NEW: Catch the data sent from the OfficeScene
@@ -441,6 +446,27 @@ class MainScene extends Phaser.Scene {
         gfx.closePath();
         gfx.fillPath();
         gfx.generateTexture('shield_icon', 12, 14);
+
+        // 6. Ad Pop-up (A white box with a red header to look like a window)
+        gfx.fillStyle(0xffffff, 1);
+        gfx.fillRect(0, 0, 200, 150); // Main white body
+        gfx.fillStyle(0xff0000, 1);
+        gfx.fillRect(0, 0, 200, 25);  // Red header bar
+        gfx.lineStyle(2, 0x000000, 1);
+        gfx.strokeRect(0, 0, 200, 150); // Black border
+        gfx.generateTexture('ad_popup', 200, 150);
+        gfx.clear();
+
+        // 7. Adblocker Icon (Red rounded square with a diagonal white stripe)
+        gfx.fillStyle(0xff0000, 1);
+        gfx.fillRoundedRect(0, 0, 40, 40, 8);
+        gfx.lineStyle(4, 0xffffff, 1);
+        gfx.beginPath();
+        gfx.moveTo(8, 8);    // Top left of stripe
+        gfx.lineTo(32, 32);  // Bottom right of stripe
+        gfx.strokePath();
+        gfx.generateTexture('adblocker_icon', 40, 40);
+
         // Destroy when completely done
         gfx.destroy();
 
@@ -839,6 +865,9 @@ class MainScene extends Phaser.Scene {
         this.controlsReversed = false; // Fix the controls!
         this.hasAntivirus = true;
 
+        // NEW: Record the time the Antivirus was given!
+        this.antivirusGivenTime = this.time.now;
+
         // 1. Draw the Antivirus Visuals (Rounded square & Shield)
         this.antivirusVisual = this.add.image(this.player.x, this.player.y, 'antivirus_aura').setDepth(11);
         this.antivirusShield = this.add.image(this.player.x - 16, this.player.y - 16, 'shield_icon').setDepth(12);
@@ -855,6 +884,80 @@ class MainScene extends Phaser.Scene {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
                 this.dialogue.next();
             }
+        });
+    }
+
+    triggerAds(currentTime) {
+        this.currentPhase = 6; // Move to Phase 6
+        this.adsGivenTime = currentTime; // Start the 10-second survival clock
+
+        // 1. Spawn 3 ads spread out across the screen
+        for (let i = 0; i < 3; i++) {
+            // Pick random coordinates, keeping them somewhat away from the very edges
+            let randomX = Phaser.Math.Between(150, this.cameras.main.width - 150);
+            let randomY = Phaser.Math.Between(150, this.cameras.main.height - 200);
+
+            // Set depth very high (95) so it blocks the player and enemies!
+            let ad = this.add.image(randomX, randomY, 'ad_popup').setDepth(95);
+            this.adsArray.push(ad);
+        }
+
+        // 2. Trigger Green Hoodie's Dialogue
+        this.dialogue.startDialogue([{
+            character: 'green_hoodie',
+            text: "YOU WON'T BELIEVE IT BUT THEY HAVE DEVELOPED SOME ADS THAT CAN BLOCK YOUR VIEW... LIKE SERIOUSLY?...",
+            waitForSpacebar: false
+        }]);
+
+        // Auto-close text after 6 seconds
+        this.time.delayedCall(6000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'green_hoodie') {
+                this.dialogue.next();
+            }
+        });
+    }
+
+    triggerAdblocker() {
+        this.currentPhase = 7; // Move to Phase 7
+
+        // 1. Trigger Blonde Guy's Dialogue
+        this.dialogue.startDialogue([{
+            character: 'blonde_guy_comms',
+            text: "WE HAVE DEVELOPED AN ADBLOCKER FOR YOUR SHIP, IT WILL MAKE QUICK WORK OF THESE ADS AND GET RID OF THEM.",
+            waitForSpacebar: false
+        }]);
+
+        // Auto-close text after 6 seconds
+        this.time.delayedCall(6000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+                this.dialogue.next();
+            }
+        });
+
+        // 2. Wait exactly 2 seconds, then execute the Adblocker wipe!
+        this.time.delayedCall(2000, () => {
+
+            // Show the Adblocker shield pop up from the ship
+            let blockerIcon = this.add.image(this.player.x, this.player.y - 40, 'adblocker_icon').setDepth(96);
+
+            // Animate it floating up and fading out
+            this.tweens.add({
+                targets: blockerIcon,
+                y: this.player.y - 100,
+                alpha: 0,
+                duration: 1500,
+                onComplete: () => blockerIcon.destroy()
+            });
+
+            // Destroy the ads one by one with a 0.5-second delay between each
+            this.adsArray.forEach((ad, index) => {
+                this.time.delayedCall(index * 500, () => {
+                    ad.destroy();
+                });
+            });
+
+            // Clear the array
+            this.adsArray = [];
         });
     }
 
@@ -972,6 +1075,20 @@ class MainScene extends Phaser.Scene {
         if (this.currentPhase === 4 && this.virusGivenTime > 0) {
             if (time - this.virusGivenTime >= 10000) {
                 this.triggerAntivirus();
+            }
+        }
+
+        // Phase 5 to Phase 6 (Trigger Ads 15 seconds after Antivirus)
+        if (this.currentPhase === 5 && this.antivirusGivenTime > 0) {
+            if (time - this.antivirusGivenTime >= 15000) {
+                this.triggerAds(time);
+            }
+        }
+
+        // Phase 6 to Phase 7 (Trigger Adblocker 10 seconds after Ads spawn)
+        if (this.currentPhase === 6 && this.adsGivenTime > 0) {
+            if (time - this.adsGivenTime >= 10000) {
+                this.triggerAdblocker();
             }
         }
 
