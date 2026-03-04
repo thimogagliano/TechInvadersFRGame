@@ -375,6 +375,12 @@ class MainScene extends Phaser.Scene {
         this.antivirusGivenTime = 0;
         this.adsGivenTime = 0;
         this.adsArray = []; // Stores the ad images so we can delete them later
+
+        // NEW: Final Boss Variables
+        this.bossActive = false;
+        this.bossMaxHealth = 100; // Takes 100 hits to defeat!
+        this.bossHealth = 100;
+        this.bossShootTimer = null;
     }
 
     // NEW: Catch the data sent from the OfficeScene
@@ -477,6 +483,19 @@ class MainScene extends Phaser.Scene {
         gfx.strokePath();
         gfx.generateTexture('adblocker_icon', 40, 40);
 
+        // 8. Boss Placeholder (Massive Red/Purple Ship)
+        gfx.fillStyle(0x880044, 1);
+        gfx.fillRect(0, 0, 200, 150); // Big rectangular block
+        gfx.fillStyle(0xffaa00, 1);
+        gfx.fillCircle(100, 75, 40); // Yellow core in the middle
+        gfx.generateTexture('boss_placeholder', 200, 150);
+        gfx.clear();
+
+        // 9. Boss Laser (Orange/Red oval)
+        gfx.fillStyle(0xff5500, 1);
+        gfx.fillRoundedRect(0, 0, 8, 24, 4);
+        gfx.generateTexture('boss_laser', 8, 24);
+
         // Destroy when completely done
         gfx.destroy();
 
@@ -499,12 +518,17 @@ class MainScene extends Phaser.Scene {
 
         this.enemies = this.physics.add.group(); // Group for Phase 1 robots
 
+        this.bossLasers = this.physics.add.group({ defaultKey: 'boss_laser', maxSize: 50 });
+
         // 3. Setup Collisions (Hit Detection)
         // When a laser overlaps an enemy, run the hitEnemy function
         this.physics.add.overlap(this.lasers, this.enemies, this.hitEnemy, null, this);
 
         // NEW: Detect when an enemy hits the player
         this.physics.add.overlap(this.player, this.enemies, this.hitPlayer, null, this);
+
+        // NEW: Boss Collisions (We will add the actual Boss vs Laser overlap inside spawnBoss)
+        this.physics.add.overlap(this.player, this.bossLasers, this.hitPlayerByBoss, null, this);
 
         // 4. Setup Input
         this.cursors = this.input.keyboard.createCursorKeys();
@@ -1033,15 +1057,155 @@ class MainScene extends Phaser.Scene {
                     waitForSpacebar: true
                 }], () => {
 
-                    // 4. This runs when they press spacebar on Stijn's warning.
-                    // THIS IS WHERE WE WILL SPAWN THE BOSS!
-                    console.log("BOSS FIGHT INITIATED!");
-                    // this.spawnBoss(); 
+                    // 4. Wait 2 seconds in silence, then spawn the nightmare.
+                    this.time.delayedCall(2000, () => {
+                        this.spawnBoss();
+                    });
 
                 });
             });
 
         });
+    }
+
+    spawnBoss() {
+        this.currentPhase = 10; // The Final Phase
+
+        const cam = this.cameras.main;
+
+        // 1. Create the Boss off-screen (above the top)
+        this.boss = this.physics.add.sprite(cam.centerX, -200, 'boss_placeholder').setDepth(5);
+        this.boss.setImmovable(true); // So player lasers don't physically push it backwards
+
+        // 2. Setup Boss Collision
+        this.physics.add.overlap(this.lasers, this.boss, this.hitBoss, null, this);
+
+        // 3. Create the Boss UI (Hidden initially)
+        this.bossUIContainer = this.add.container(0, 0).setDepth(105).setAlpha(0);
+
+        // Health Bar Background (Dark Gray)
+        const barWidth = cam.width * 0.6;
+        const barHeight = 20;
+        const barX = cam.centerX - (barWidth / 2);
+        const barY = cam.height * 0.08; // Just below the top bar
+
+        this.bossBarBg = this.add.rectangle(barX, barY, barWidth, barHeight, 0x333333).setOrigin(0, 0).setStrokeStyle(2, 0x000000);
+
+        // Health Bar Fill (Red)
+        this.bossBarFill = this.add.rectangle(barX, barY, barWidth, barHeight, 0xff0000).setOrigin(0, 0);
+
+        // Boss Name Text
+        this.bossNameText = this.add.text(cam.centerX, barY + barHeight + 5, "Final Rogue AI Superboss XL", {
+            fontFamily: 'Courier, monospace',
+            fontSize: '18px',
+            color: '#ff4444',
+            fontStyle: 'bold'
+        }).setOrigin(0.5, 0);
+
+        this.bossUIContainer.add([this.bossBarBg, this.bossBarFill, this.bossNameText]);
+
+        // 4. Animate the Boss sliding down
+        this.tweens.add({
+            targets: this.boss,
+            y: cam.height * 0.25,
+            duration: 4000,
+            ease: 'Sine.easeOut',
+            onComplete: () => {
+
+                // 1. Fade in the terrifying health bar so they know what they are up against
+                this.tweens.add({ targets: this.bossUIContainer, alpha: 1, duration: 1000 });
+
+                // 2. Trigger the panicked dialogue!
+                this.dialogue.startDialogue([{
+                    character: 'blonde_guy_comms',
+                    text: "WE DID NOT SEE THIS COMING!!... A FINAL ROGUE AI BOSS!! THIS IS GONNA BE A HARD FIGHT. TEAM FUTURE READY WILL BE ON THEIR WAY TO HELP YOU!",
+                    waitForSpacebar: false
+                }]);
+
+                // 3. Wait exactly 12 seconds before the chaos begins
+                this.time.delayedCall(12000, () => {
+
+                    // Dismiss the dialogue balloon
+                    if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+                        this.dialogue.next();
+                    }
+
+                    // NOW the fight officially starts! 
+                    // (The boss is vulnerable to damage and starts shooting)
+                    this.bossActive = true;
+                    this.startBossAttacks();
+
+                });
+            }
+        });
+    }
+
+    startBossAttacks() {
+        // Boss fires a laser every 800ms
+        this.bossShootTimer = this.time.addEvent({
+            delay: 800,
+            callback: () => {
+                if (!this.bossActive) return;
+
+                // Spawn a laser at the boss's location
+                let laser = this.bossLasers.get(this.boss.x, this.boss.y + 75);
+                if (laser) {
+                    laser.setActive(true).setVisible(true);
+
+                    // Make it slightly harder: Aim roughly at the player!
+                    this.physics.moveToObject(laser, this.player, 400); // 400 is the laser speed
+                }
+            },
+            callbackScope: this,
+            loop: true
+        });
+    }
+
+    hitBoss(object1, object2) {
+        if (!this.bossActive) return;
+
+        // 1. Fool-proof check: Figure out exactly which item is the laser and which is the boss
+        let laser = (object1.texture && object1.texture.key === 'laser') ? object1 : object2;
+        let boss = (object1.texture && object1.texture.key === 'boss_placeholder') ? object1 : object2;
+
+        // Destroy the laser safely
+        if (laser && laser.active) {
+            laser.destroy();
+        }
+
+        this.bossHealth -= 1;
+
+        // 2. Safe Visual Flash (Using Tint and Alpha instead of TintFill)
+        boss.setTint(0xffaaaa); // Tint it slightly red/white
+        boss.setAlpha(0.7);     // Make it slightly transparent
+
+        this.time.delayedCall(50, () => {
+            if (boss && boss.active) {
+                boss.clearTint();
+                boss.setAlpha(1);
+            }
+        });
+
+        // 3. Update the Health Bar width
+        const healthPercent = Math.max(0, this.bossHealth / this.bossMaxHealth);
+        const barWidth = this.cameras.main.width * 0.6;
+        this.bossBarFill.setSize(barWidth * healthPercent, 20);
+
+        // 4. Defeat Check
+        if (this.bossHealth <= 0) {
+            this.bossActive = false;
+            if (this.bossShootTimer) this.bossShootTimer.remove();
+            console.log("BOSS DEFEATED!");
+        }
+    }
+
+    hitPlayerByBoss(player, bossLaser) {
+        bossLaser.destroy();
+
+        // We reuse the exact same hit logic you already built for robots!
+        // To do this cleanly, we'll extract the health reduction into a helper, 
+        // but for now, we can just copy your existing damage logic or call hitPlayer with a dummy enemy.
+        this.hitPlayer(player, bossLaser);
     }
 
     update(time, delta) {
@@ -1210,6 +1374,13 @@ class MainScene extends Phaser.Scene {
         this.enemies.children.iterate((enemy) => {
             if (enemy && enemy.y > this.cameras.main.height + 32) {
                 enemy.destroy();
+            }
+        });
+
+        // Destroy boss lasers that fly off the bottom
+        this.bossLasers.children.iterate((laser) => {
+            if (laser && laser.y > this.cameras.main.height + 20) {
+                laser.destroy();
             }
         });
 
