@@ -344,6 +344,15 @@ class MainScene extends Phaser.Scene {
 
         this.tutorialState = 'movement'; // Tracks: 'movement', 'shooting', 'done'
         this.keysPressed = { W: false, A: false, S: false, D: false };
+
+        // NEW: Phase Manager Variables
+        this.currentPhase = 1;
+        this.enemiesDefeated = 0;
+        this.gameplayStartTime = 0;
+
+        // NEW: Firewall Variables
+        this.hasFirewall = false;
+        this.firewallHits = 0;
     }
 
     // NEW: Catch the data sent from the OfficeScene
@@ -524,6 +533,8 @@ class MainScene extends Phaser.Scene {
         laser.destroy();
         enemy.destroy();
 
+        this.enemiesDefeated++; // NEW: Track the kill count!
+
         // 2. Add points to the score (let's say 100 points per Phase 1 robot)
         this.score += 100;
 
@@ -537,6 +548,21 @@ class MainScene extends Phaser.Scene {
     hitPlayer(player, enemy) {
         // 1. Destroy the enemy that crashed into the ship
         enemy.destroy();
+
+        // --- FIREWALL ABSORPTION LOGIC ---
+        if (this.hasFirewall) {
+            this.firewallHits++;
+
+            if (this.firewallHits === 1) {
+                // First Hit: Flash the firewall white to show it absorbed the impact
+                this.firewallVisual.setFillStyle(0xffffff, 0.6);
+                this.time.delayedCall(150, () => this.firewallVisual.setFillStyle(0x0088ff, 0.3));
+                return; // EXIT EARLY! Do not take a heart away!
+            } else {
+                // Second Hit: Reset the counter and let the code below take a heart
+                this.firewallHits = 0;
+            }
+        }
 
         // 2. Decrease the player's health
         this.health--;
@@ -690,6 +716,8 @@ class MainScene extends Phaser.Scene {
     }
 
     startGameplay() {
+        this.gameplayStartTime = this.time.now; // NEW: Record start time
+
         // Start the enemy spawner timer that we removed from create()
         this.spawnerTimer = this.time.addEvent({
             delay: 1500,
@@ -704,6 +732,50 @@ class MainScene extends Phaser.Scene {
             text: "SYSTEMS ARE GREEN! HERE COME THE ROGUE ROBOTS. PROTECT EARTH!!",
             waitForSpacebar: true
         }]);
+    }
+
+    triggerAICloning() {
+        this.currentPhase = 2; // Move to Phase 2
+
+        // 1. Double the spawn rate (Decrease the delay from 1500ms to 600ms)
+        if (this.spawnerTimer) this.spawnerTimer.remove();
+
+        this.spawnerTimer = this.time.addEvent({
+            delay: 600, // Much faster spawning!
+            callback: this.spawnEnemy,
+            callbackScope: this,
+            loop: true
+        });
+
+        // 2. Start a 10-second survival timer to deliver the Firewall
+        this.time.delayedCall(10000, () => {
+            this.triggerFirewall();
+        });
+    }
+
+    triggerFirewall() {
+        this.currentPhase = 3; // Move to Phase 3
+        this.hasFirewall = true;
+        this.firewallHits = 0; // Reset hit counter
+
+        // 1. Draw the transparent blue firewall circle
+        this.firewallVisual = this.add.circle(this.player.x, this.player.y, 35, 0x0088ff, 0.3);
+        this.firewallVisual.setStrokeStyle(2, 0x00ffff); // Glowing cyan border
+        this.firewallVisual.setDepth(10); // Keep it just above the player
+
+        // 2. Show the Green Hoodie Guy dialogue
+        this.dialogue.startDialogue([{
+            character: 'green_hoodie', // Matches your DialogueManager portrait key
+            text: "WE HAVE DEVELOPED A FIREWALL FOR YOU TO HELP WITH THE DAMAGE FROM THE ROBOTS!",
+            waitForSpacebar: false // False so they don't have to stop playing to read it
+        }]);
+
+        // 3. Auto-close the text balloon after 5 seconds so it clears their screen
+        this.time.delayedCall(5000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'green_hoodie') {
+                this.dialogue.next();
+            }
+        });
     }
 
     update(time, delta) {
@@ -795,6 +867,22 @@ class MainScene extends Phaser.Scene {
         // 1. Calculate the limits based on the current canvas height
         const minY = this.cameras.main.height * 0.55; // Cannot go higher than the top 40% mark
         const maxY = this.cameras.main.height * 0.80; // Cannot go lower than the bottom 15% mark
+
+        // --- PHASE MANAGER PROGRESSION ---
+        if (this.currentPhase === 1 && this.spawnerTimer) {
+            let timePassed = time - this.gameplayStartTime;
+
+            // Condition: 5 robots defeated AND 10 seconds (10000ms) have passed
+            if (this.enemiesDefeated >= 5 && timePassed >= 10000) {
+                this.triggerAICloning();
+            }
+        }
+
+        // --- FIREWALL VISUAL TRACKING ---
+        // If the player has the firewall, make the blue circle follow the ship
+        if (this.hasFirewall && this.firewallVisual) {
+            this.firewallVisual.setPosition(this.player.x, this.player.y);
+        }
 
         // 2. Clamp the player's vertical position
         if (this.player.y < minY) {
