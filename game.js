@@ -316,7 +316,7 @@ class OfficeScene extends Phaser.Scene {
             if (!this.scene.isActive('OfficeScene')) return;
 
             this.bgRed.setVisible(!this.bgRed.visible);
-            this.time.delayedCall(Phaser.Math.Between(500, 1000), strobeEffect);
+            this.time.delayedCall(800, strobeEffect);
         };
         strobeEffect(); // Start the flashing
 
@@ -384,6 +384,10 @@ class MainScene extends Phaser.Scene {
         // NEW LINE: Create the graphics tool so we can draw the placeholders!
         let gfx = this.make.graphics({ x: 0, y: 0, add: false });
 
+        // NEW: Cutscene placeholders (Dark gray and lighter gray)
+        gfx.fillStyle(0x333333, 1).fillRect(0, 0, 800, 600).generateTexture('cutscene_1', 800, 600);
+        gfx.fillStyle(0x555555, 1).fillRect(0, 0, 800, 600).generateTexture('cutscene_2', 800, 600);
+
         // Player Ship (Green Triangle)
         gfx.fillStyle(0x00ff00, 1);
         gfx.fillTriangle(16, 0, 0, 32, 32, 32);
@@ -401,6 +405,11 @@ class MainScene extends Phaser.Scene {
         gfx.fillRect(0, 0, 32, 32);
         gfx.generateTexture('enemyRobot', 32, 32);
         gfx.destroy(); // Destroy the graphics object when done making textures
+
+        // --- CUTSCENE OVERLAY ---
+        // Sits at depth 90 (hiding the gameplay, but behind the depth 100 UI)
+        this.cutsceneBg = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'cutscene_1').setDepth(90);
+        this.cutsceneBg.setVisible(false);
 
         // 1. Setup Player 
         const centerX = this.cameras.main.centerX;
@@ -647,6 +656,39 @@ class MainScene extends Phaser.Scene {
         this.tutorialUI.getAt(9).setVisible(false); // Hides the "SPACE" text
     }
 
+    startCutscene() {
+        // 1. Show the first cutscene background
+        this.cutsceneBg.setTexture('cutscene_1');
+        this.scaleBackgroundToCover(this.cutsceneBg);
+        this.cutsceneBg.setVisible(true);
+
+        // 2. Play the first part of the cutscene
+        this.dialogue.startDialogue([{
+            character: 'blonde_guy',
+            text: "FANTASTIC! EVERYTHING WORKS AND PHASE 1 IS COMPLETED. WE HAVE BUILT THE SPACESHIP AND LAUNCHED IT SUCCESSFULLY!",
+            waitForSpacebar: true
+        }], () => {
+
+            // 3. This runs when they press spacebar on the first text. 
+            // Swap to the second background!
+            this.cutsceneBg.setTexture('cutscene_2');
+
+            // Trigger the second part of the dialogue
+            this.dialogue.startDialogue([{
+                character: 'blonde_guy',
+                text: "WE ARE DETECTING INCOMING ROGUE AI ROBOTS. PREPARE FOR COMBAT!", // Note: Replace this with your actual Phase 2 text!
+                waitForSpacebar: true
+            }], () => {
+
+                // 4. This runs when they press spacebar on the final text.
+                // Hide the cutscene, reveal space, and start the game!
+                this.cutsceneBg.setVisible(false);
+                this.startGameplay();
+
+            });
+        });
+    }
+
     startGameplay() {
         // Start the enemy spawner timer that we removed from create()
         this.spawnerTimer = this.time.addEvent({
@@ -744,7 +786,7 @@ class MainScene extends Phaser.Scene {
                 // Wait 1 second so they can see the green spacebar, then start the game!
                 this.time.delayedCall(1000, () => {
                     this.tutorialUI.destroy(); // Remove the floating keys
-                    this.startGameplay();
+                    this.startCutscene(); // <-- UPDATED THIS LINE
                 });
             }
         }
