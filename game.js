@@ -256,13 +256,21 @@ class OfficeScene extends Phaser.Scene {
         this.dialogue.resize(this.cameras.main);
 
         this.startWelcomeSequence();
+
+        // Clean up the global resize listener when this scene shuts down!
+        this.events.once('shutdown', () => {
+            this.scale.removeAllListeners('resize');
+        });
     }
 
-    // --- REUSABLE HELPER: SCALES IMAGES TO COVER SCREEN WITHOUT WARPING ---
-    scaleBackgroundToCover(bgImage) {
+    // --- REUSABLE HELPER ---
+    scaleBackgroundToCover(bgImage, paddingMultiplier = 1.0) {
+        // NEW: Stop immediately if the image was destroyed by a scene change!
+        if (!bgImage || !bgImage.active) return;
+
         const scaleX = this.cameras.main.width / bgImage.width;
         const scaleY = this.cameras.main.height / bgImage.height;
-        const maxScale = Math.max(scaleX, scaleY);
+        const maxScale = Math.max(scaleX, scaleY) * paddingMultiplier;
 
         bgImage.setScale(maxScale);
         bgImage.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
@@ -470,6 +478,10 @@ class MainScene extends Phaser.Scene {
     */
 
     create() {
+        // --- 1. RESET KEYBOARD AND BROWSER FOCUS ---
+        this.input.keyboard.enabled = true; // Turn the dashboard back on after a victory!
+        window.focus(); // Force the browser to pay attention to the game canvas!
+
         // --- BOMB-PROOF PARALLAX BACKGROUND ---
         // Create a massive container (3000x3000) so it never shows edges when shifting
         this.spaceBg = this.add.container(this.cameras.main.centerX, this.cameras.main.centerY).setDepth(-10);
@@ -614,18 +626,23 @@ class MainScene extends Phaser.Scene {
         // Destroy when completely done
         gfx.destroy();
 
-        // NEW: Turn those frames into a playable animation!
-        this.anims.create({
-            key: 'boss_destruction',
-            frames: [
-                { key: 'boss_placeholder' },
-                { key: 'boss_explode_1' },
-                { key: 'boss_explode_2' },
-                { key: 'boss_explode_3' }
-            ],
-            frameRate: 2, // 2 frames per second (slow enough to see the cracks)
-            repeat: 0   // Play exactly once and stop
-        });
+        // Destroy when completely done
+        gfx.destroy();
+
+        // NEW: Turn those frames into a playable animation safely!
+        if (!this.anims.exists('boss_destruction')) {
+            this.anims.create({
+                key: 'boss_destruction',
+                frames: [
+                    { key: 'boss_placeholder' },
+                    { key: 'boss_explode_1' },
+                    { key: 'boss_explode_2' },
+                    { key: 'boss_explode_3' }
+                ],
+                frameRate: 2,
+                repeat: 0
+            });
+        }
 
         // --- CUTSCENE OVERLAY ---
         // Sits at depth 90 (hiding the gameplay, but behind the depth 100 UI)
@@ -711,16 +728,24 @@ class MainScene extends Phaser.Scene {
         this.scale.on('resize', this.resizeUI, this);
 
         this.startTutorial();
+
+        // --- ADD THIS RIGHT BEFORE THE END OF CREATE ---
+        // Clean up the global resize listener when this scene shuts down!
+        this.events.once('shutdown', () => {
+            this.scale.removeAllListeners('resize');
+        });
     }
 
-    // --- REUSABLE HELPER (Modified to accept a padding multiplier) ---
+    // --- REUSABLE HELPER ---
     scaleBackgroundToCover(bgImage, paddingMultiplier = 1.0) {
+        // NEW: Stop immediately if the image was destroyed by a scene change!
+        if (!bgImage || !bgImage.active) return;
+
         const scaleX = this.cameras.main.width / bgImage.width;
         const scaleY = this.cameras.main.height / bgImage.height;
         const maxScale = Math.max(scaleX, scaleY) * paddingMultiplier;
 
         bgImage.setScale(maxScale);
-        // Reset to center
         bgImage.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
     }
 
@@ -818,6 +843,9 @@ class MainScene extends Phaser.Scene {
 
     resizeUI() {
         const cam = this.cameras.main;
+
+        // NEW: Force the physics world to resize so the ship doesn't hit an invisible wall!
+        this.physics.world.setBounds(0, 0, cam.width, cam.height);
 
         // --- TOP BAR SIZING & POSITIONING ---
         // Set height to 6% of the screen height
@@ -1161,7 +1189,7 @@ class MainScene extends Phaser.Scene {
                     this.spawnerTimer.remove(); // No more robots will spawn!
 
                     // 5. Wait 3 seconds for the remaining robots to fly off the bottom of the screen
-                    this.time.delayedCall(3000, () => {
+                    this.time.delayedCall(4000, () => {
                         this.triggerBossTransition();
                     });
                 });
@@ -1176,28 +1204,42 @@ class MainScene extends Phaser.Scene {
         this.dialogue.startDialogue([{
             character: 'blonde_guy_comms',
             text: "PHASE 2 IS NOW OVER! WE HAVE SUCCESSFULLY EVOLVED AGAINST THE ROBOTS AND DEFEATED THEM!",
-            waitForSpacebar: true // Player must acknowledge their "victory"
-        }], () => {
+            waitForSpacebar: false // Locks the text on screen
+        }]);
 
-            // 2. This runs WHEN they press spacebar to close the victory message.
-            // Wait exactly 2 seconds in absolute silence...
-            this.time.delayedCall(2000, () => {
+        // 2. Wait exactly 5 seconds, then close the victory dialogue
+        this.time.delayedCall(5000, () => {
 
-                // 3. Trigger Stijn's panic warning!
+            // Forcefully hide the dialogue balloon
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+                this.dialogue.next();
+            }
+
+            // 3. Wait 3 seconds in absolute silence...
+            this.time.delayedCall(3000, () => {
+
+                // 4. Trigger Stijn's panic warning!
                 this.dialogue.startDialogue([{
                     character: 'stijn',
-                    text: "SOMETHING IS NOT RIGHT! A VERY BIG OBJECT SEEMS TO BE COMING YOUR WAY!!",
-                    waitForSpacebar: true
-                }], () => {
+                    text: "SOMETHING IS WRONG! A VERY BIG OBJECT SEEMS TO BE COMING YOUR WAY!!",
+                    waitForSpacebar: false
+                }]);
 
-                    // 4. Wait 2 seconds in silence, then spawn the nightmare.
+                // 5. Leave Stijn's warning on screen for 5 seconds to let the player read it, then close it
+                this.time.delayedCall(5000, () => {
+
+                    // Hide Stijn's dialogue balloon
+                    if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn') {
+                        this.dialogue.next();
+                    }
+
+                    // 6. Wait 2 final seconds in silence, then spawn the nightmare.
                     this.time.delayedCall(2000, () => {
                         this.spawnBoss();
                     });
 
                 });
             });
-
         });
     }
 
@@ -1255,8 +1297,8 @@ class MainScene extends Phaser.Scene {
                     waitForSpacebar: false
                 }]);
 
-                // 3. Wait exactly 12 seconds before the chaos begins
-                this.time.delayedCall(12000, () => {
+                // 3. Wait exactly 6 seconds before the chaos begins
+                this.time.delayedCall(6000, () => {
 
                     // Dismiss the dialogue balloon
                     if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
@@ -1391,7 +1433,7 @@ class MainScene extends Phaser.Scene {
         }]);
 
         // 3. Wait 12 seconds, clear dialogue, and bring in the helper ships!
-        this.time.delayedCall(12000, () => {
+        this.time.delayedCall(6000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
                 this.dialogue.next();
             }
@@ -1430,8 +1472,8 @@ class MainScene extends Phaser.Scene {
                         waitForSpacebar: false
                     }]);
 
-                    // 5. Wait 10 seconds, grant upgrades, and RESUME FIGHT!
-                    this.time.delayedCall(10000, () => {
+                    // 5. Wait 6 seconds, grant upgrades, and RESUME FIGHT!
+                    this.time.delayedCall(5000, () => {
                         if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn_spacesuit') {
                             this.dialogue.next();
                         }
@@ -1826,12 +1868,14 @@ class PartyScene extends Phaser.Scene {
         gfx.destroy();
 
         // --- 2. CREATE ANIMATED BACKGROUND ---
-        this.anims.create({
-            key: 'party_dance',
-            frames: [{ key: 'party_bg_1' }, { key: 'party_bg_2' }],
-            frameRate: 2, // Swaps every half second
-            repeat: -1
-        });
+        if (!this.anims.exists('party_dance')) {
+            this.anims.create({
+                key: 'party_dance',
+                frames: [{ key: 'party_bg_1' }, { key: 'party_bg_2' }],
+                frameRate: 2,
+                repeat: -1
+            });
+        }
 
         this.bg = this.add.sprite(cam.centerX, cam.centerY, 'party_bg_1').play('party_dance');
         this.bg.setDisplaySize(cam.width, cam.height);
@@ -1864,6 +1908,11 @@ class PartyScene extends Phaser.Scene {
                 irisGraphics.destroy(); // Remove the black cover
                 this.startSequence(); // Start the timing sequence!
             }
+        });
+
+        // Clean up the global resize listener when this scene shuts down!
+        this.events.once('shutdown', () => {
+            this.scale.removeAllListeners('resize');
         });
     }
 
