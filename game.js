@@ -417,8 +417,8 @@ class MainScene extends Phaser.Scene {
 
         // NEW: Final Boss Variables
         this.bossActive = false;
-        this.bossMaxHealth = 100; // Takes 1000 hits to defeat!
-        this.bossHealth = 100;
+        this.bossMaxHealth = 50; // Takes 1000 hits to defeat!
+        this.bossHealth = 50;
         this.bossShootTimer = null;
 
         // Phase 2 Boss Variables
@@ -557,8 +557,46 @@ class MainScene extends Phaser.Scene {
         gfx.fillTriangle(16, 0, 0, 32, 32, 32);
         gfx.generateTexture('helperPurple', 32, 32);
 
+        // 13. Boss Explosion Frame 1 (Cracked)
+        gfx.fillStyle(0x880044, 1);
+        gfx.fillRect(0, 0, 200, 150);
+        gfx.fillStyle(0x000000, 1);
+        gfx.fillRect(80, 0, 10, 150); // Vertical crack
+        gfx.fillRect(0, 70, 200, 10); // Horizontal crack
+        gfx.generateTexture('boss_explode_1', 200, 150);
+        gfx.clear();
+
+        // 14. Boss Explosion Frame 2 (Broken into chunks)
+        gfx.fillStyle(0x880044, 1);
+        gfx.fillRect(0, 0, 80, 70); // Top left chunk
+        gfx.fillRect(100, 80, 100, 70); // Bottom right chunk
+        gfx.fillStyle(0xffaa00, 1);
+        gfx.fillCircle(100, 75, 20); // Exposed core shrinking
+        gfx.generateTexture('boss_explode_2', 200, 150);
+        gfx.clear();
+
+        // 15. Boss Explosion Frame 3 (Flash and smoke)
+        gfx.fillStyle(0xffaaaa, 1);
+        gfx.fillCircle(100, 75, 80);
+        gfx.fillStyle(0xff4400, 1);
+        gfx.fillCircle(100, 75, 50);
+        gfx.generateTexture('boss_explode_3', 200, 150);
+
         // Destroy when completely done
         gfx.destroy();
+
+        // NEW: Turn those frames into a playable animation!
+        this.anims.create({
+            key: 'boss_destruction',
+            frames: [
+                { key: 'boss_placeholder' },
+                { key: 'boss_explode_1' },
+                { key: 'boss_explode_2' },
+                { key: 'boss_explode_3' }
+            ],
+            frameRate: 2, // 2 frames per second (slow enough to see the cracks)
+            repeat: 0   // Play exactly once and stop
+        });
 
         // --- CUTSCENE OVERLAY ---
         // Sits at depth 90 (hiding the gameplay, but behind the depth 100 UI)
@@ -1284,9 +1322,15 @@ class MainScene extends Phaser.Scene {
 
         // 4. Defeat Check
         if (this.bossHealth <= 0) {
-            this.bossActive = false;
+            this.bossActive = false; // Stops boss logic
+
             if (this.bossShootTimer) this.bossShootTimer.remove();
-            console.log("BOSS DEFEATED!");
+            if (this.helperShootTimer) this.helperShootTimer.remove(); // Stop helpers from shooting empty space
+
+            this.tweens.killTweensOf(this.boss); // Stop the boss from sliding left/right
+            this.bossUIContainer.setVisible(false); // Hide the health bar immediately
+
+            this.triggerDefeatSequence(); // START THE FINALE!
         }
     }
 
@@ -1410,6 +1454,85 @@ class MainScene extends Phaser.Scene {
                     });
                 }
             });
+        });
+    }
+
+    triggerDefeatSequence() {
+        this.currentPhase = 99; // Set this early to disable player controls
+        this.input.keyboard.enabled = false;
+
+        // 1. Play the breaking animation
+        this.boss.play('boss_destruction');
+
+        // 2. Wait for the animation to finish completely BEFORE fading
+        this.boss.once('animationcomplete', () => {
+
+            this.tweens.add({
+                targets: this.boss,
+                alpha: 0,
+                duration: 1500, // Slowly fade out over 1.5 seconds
+                onComplete: () => {
+                    this.boss.destroy();
+
+                    // 3. Trigger the dialogue
+                    this.dialogue.startDialogue([{
+                        character: 'stijn_spacesuit',
+                        character2: 'james_spacesuit',
+                        text: "YES!! YOU DID IT! THE FINAL ROGUE AI BOSS HAS BEEN DEFEATED, TIME FOR US TO HEAD BACK TO EARTH!",
+                        waitForSpacebar: false
+                    }]);
+
+                    // 4. Wait EXACTLY 6 seconds
+                    this.time.delayedCall(6000, () => {
+                        // Hide the dialogue box!
+                        this.dialogue.uiContainer.setVisible(false);
+                        this.dialogue.currentMessage = null;
+
+                        // Start the flyaway and iris out
+                        this.triggerVictoryFlyaway();
+                    });
+                }
+            });
+        });
+    }
+
+    triggerVictoryFlyaway() {
+        // FIX: Turn off world bounds so the ship can actually leave the screen!
+        this.player.setCollideWorldBounds(false);
+
+        // Fly all three ships upwards off the screen SLOWLY
+        this.tweens.add({
+            targets: [this.player, ...this.helperShips],
+            y: -150,
+            duration: 6000, // Slower! (Takes 6 seconds to fly away)
+            ease: 'Sine.easeInOut'
+        });
+
+        // The "Iris Out" Shrinking Circle Transition
+        const cam = this.cameras.main;
+        let irisGraphics = this.add.graphics().setDepth(200);
+
+        let maxRadius = Math.max(cam.width, cam.height);
+        let irisObj = { r: maxRadius };
+
+        this.tweens.add({
+            targets: irisObj,
+            r: 0,
+            duration: 4000,
+            // REMOVED THE DELAY HERE!
+            onUpdate: () => {
+                irisGraphics.clear();
+                irisGraphics.lineStyle(3000, 0x000000, 1);
+                irisGraphics.strokeCircle(cam.centerX, cam.centerY, irisObj.r + 1500);
+            },
+            onComplete: () => {
+                this.add.text(cam.centerX, cam.centerY, "MISSION ACCOMPLISHED", {
+                    fontFamily: 'Courier, monospace',
+                    fontSize: '32px',
+                    color: '#ffffff',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5).setDepth(201);
+            }
         });
     }
 
@@ -1554,15 +1677,18 @@ class MainScene extends Phaser.Scene {
             this.antivirusShield.setPosition(this.player.x - 18, this.player.y - 18);
         }
 
-        // 2. Clamp the player's vertical position
-        if (this.player.y < minY) {
-            this.player.y = minY;
-        } else if (this.player.y > maxY) {
-            this.player.y = maxY;
+        // 2. Clamp the player's vertical position (ONLY IF NOT IN THE FINALE)
+        if (this.currentPhase !== 99) {
+            if (this.player.y < minY) {
+                this.player.y = minY;
+            } else if (this.player.y > maxY) {
+                this.player.y = maxY;
+            }
         }
 
         // --- SHOOTING ---
-        if (isShooting && time > this.lastFired) {
+        // Prevent shooting if we are in the finale (Phase 99)
+        if (isShooting && time > this.lastFired && this.currentPhase !== 99) {
             this.shootLaser();
             this.lastFired = time + this.fireRate;
         }
