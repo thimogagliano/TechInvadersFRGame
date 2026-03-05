@@ -28,6 +28,9 @@ class DialogueManager {
         this.dialogBox.setStrokeStyle(4, 0x000000);
 
         this.portrait = this.scene.add.rectangle(0, 0, 80, 80, this.portraits['default']);
+        // NEW: The secondary character portrait (Right)
+        this.portraitSecondary = this.scene.add.rectangle(0, 0, 80, 80, 0x4488ff).setOrigin(0, 0).setStrokeStyle(2, 0x000000);
+        this.portraitSecondary.setVisible(false); // Hidden by default!
         this.portrait.setOrigin(0, 0);
         this.portrait.setStrokeStyle(2, 0x000000);
 
@@ -38,7 +41,8 @@ class DialogueManager {
             fontStyle: 'bold'
         });
 
-        this.uiContainer.add([this.dialogBox, this.portrait, this.dialogText]);
+        // Make sure to add it to your UI container so it renders on top!
+        this.uiContainer.add([this.dialogBox, this.portrait, this.portraitSecondary, this.dialogText]);
 
         // --- SETUP INPUT (SPACEBAR) ---
         this.spacebar = this.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -60,6 +64,11 @@ class DialogueManager {
         this.portrait.setPosition(portraitX, portraitY);
         this.portrait.setSize(portraitSize, portraitSize);
 
+        // NEW: Position the secondary portrait (Right side of the box)
+        const rightPortraitX = marginX + boxWidth - portraitSize - (boxHeight * 0.125);
+        this.portraitSecondary.setPosition(rightPortraitX, portraitY);
+        this.portraitSecondary.setSize(portraitSize, portraitSize);
+
         const textX = portraitX + portraitSize + 15;
         const textY = marginY + 15;
         this.dialogText.setPosition(textX, textY);
@@ -71,78 +80,108 @@ class DialogueManager {
     }
 
     // --- CORE LOGIC (Now accepts the onComplete callback!) ---
-    startDialogue(messagesArray, onCompleteCallback = null) {
-        this.queue = messagesArray;
+    startDialogue(messages, onComplete) {
+        // THE ULTIMATE FIX: If we forgot the [ ] array brackets, automatically wrap it in an array!
+        if (!Array.isArray(messages)) {
+            messages = [messages];
+        }
+
+        this.queue = messages;
         this.currentIndex = 0;
-        this.onComplete = onCompleteCallback; // Store the transition function
+        this.onComplete = onComplete;
         this.uiContainer.setVisible(true);
+        this.isTyping = false; // Reset typing flag
+
         this.showNextMessage();
     }
 
     showNextMessage() {
-        // If queue is empty, close the box and trigger the transition
-        if (this.currentIndex >= this.queue.length) {
+        // 1. End of queue check: Close the box safely
+        if (!this.queue || this.currentIndex >= this.queue.length) {
             this.uiContainer.setVisible(false);
+            this.currentMessage = null;
 
             if (this.onComplete) {
-                // 1. Copy the callback function
                 const safeCallback = this.onComplete;
-                // 2. Erase the original so it can NEVER double-fire
                 this.onComplete = null;
-                // 3. Run the transition
                 safeCallback();
             }
             return;
         }
 
-        this.currentMessage = this.queue[this.currentIndex];
-        this.currentIndex++;
+        // 2. Grab the message
+        let message = this.queue[this.currentIndex];
 
-        const color = this.portraits[this.currentMessage.character] || this.portraits['default'];
-        this.portrait.setFillStyle(color);
+        // 3. Failsafe: If the array had a weird empty slot, skip it and move on
+        if (!message) {
+            this.currentIndex++;
+            return this.showNextMessage();
+        }
 
-        this.dialogText.setText("");
+        this.currentMessage = message;
+
+        // 4. Portrait 1 (Left)
+        if (this.portraits[message.character]) {
+            this.portrait.setFillStyle(this.portraits[message.character]);
+        }
+
+        // 5. Portrait 2 (Right) & Word Wrap
+        if (message.character2) {
+            if (this.portraits[message.character2]) {
+                this.portraitSecondary.setFillStyle(this.portraits[message.character2]);
+            }
+            this.portraitSecondary.setVisible(true);
+            let doubleWrapWidth = this.dialogBox.width - (this.portrait.width * 2) - 60;
+            this.dialogText.setWordWrapWidth(doubleWrapWidth);
+        } else {
+            this.portraitSecondary.setVisible(false);
+            let singleWrapWidth = this.dialogBox.width - this.portrait.width - 40;
+            this.dialogText.setWordWrapWidth(singleWrapWidth);
+        }
+
+        // 6. Reset text and start Typewriter Effect
+        this.dialogText.setText('');
         this.isTyping = true;
-
         let charIndex = 0;
-        const fullText = this.currentMessage.text;
 
-        if (this.typewriterTimer) this.typewriterTimer.remove();
+        if (this.typewriterTimer) {
+            this.typewriterTimer.remove();
+        }
 
         this.typewriterTimer = this.scene.time.addEvent({
-            delay: 30,
-            repeat: fullText.length - 1,
+            delay: 30, // Typing speed
             callback: () => {
-                this.dialogText.text += fullText[charIndex];
+                this.dialogText.text += message.text[charIndex];
                 charIndex++;
-                if (charIndex === fullText.length) {
+                if (charIndex >= message.text.length) {
                     this.isTyping = false;
+                    this.typewriterTimer.remove();
                 }
-            }
+            },
+            callbackScope: this,
+            repeat: message.text.length - 1
         });
+
+        // 7. VERY IMPORTANT: Advance the index AFTER everything is set up
+        this.currentIndex++;
     }
 
     // --- INPUT HANDLING ---
     handleInput() {
-        // 1. Do nothing if the dialogue box is hidden
+        // 1. Ignore if box is hidden
         if (!this.uiContainer.visible) return;
 
-        // 2. Do nothing if this is a mid-combat message (waitForSpacebar is false).
-        // This allows the player to mash Spacebar to shoot without affecting the text!
-        if (!this.currentMessage.waitForSpacebar) {
-            return;
-        }
+        // 2. Ignore if there is no current message loaded
+        if (!this.currentMessage) return;
 
-        // 3. Do nothing if the text is still typing. 
-        // This prevents the player from skipping the typewriter animation!
-        if (this.isTyping) {
-            return;
-        }
+        // 3. Ignore if this message doesn't need spacebar (combat comms)
+        if (!this.currentMessage.waitForSpacebar) return;
 
-        // 4. Only advance if it is done typing AND it requires a spacebar press (like Cutscenes)
-        if (!this.isTyping && this.currentMessage.waitForSpacebar) {
-            this.showNextMessage();
-        }
+        // 4. Ignore if it is currently typing out the letters
+        if (this.isTyping) return;
+
+        // 5. Safe to proceed to the next message!
+        this.showNextMessage();
     }
 
     next() {
@@ -378,9 +417,14 @@ class MainScene extends Phaser.Scene {
 
         // NEW: Final Boss Variables
         this.bossActive = false;
-        this.bossMaxHealth = 100; // Takes 100 hits to defeat!
+        this.bossMaxHealth = 100; // Takes 1000 hits to defeat!
         this.bossHealth = 100;
         this.bossShootTimer = null;
+
+        // Phase 2 Boss Variables
+        this.phase2Triggered = false;
+        this.bossShielded = false;
+        this.hasDoubleLaser = false;
     }
 
     // NEW: Catch the data sent from the OfficeScene
@@ -496,6 +540,23 @@ class MainScene extends Phaser.Scene {
         gfx.fillRoundedRect(0, 0, 8, 24, 4);
         gfx.generateTexture('boss_laser', 8, 24);
 
+        // 10. Upgraded Player Ship (Slightly larger, cyan accents)
+        gfx.fillStyle(0x00ffaa, 1);
+        gfx.fillTriangle(20, 0, 0, 40, 40, 40);
+        gfx.generateTexture('playerShipUpgraded', 40, 40);
+        gfx.clear();
+
+        // 11. Helper Ship Blue (James)
+        gfx.fillStyle(0x0088ff, 1);
+        gfx.fillTriangle(16, 0, 0, 32, 32, 32);
+        gfx.generateTexture('helperBlue', 32, 32);
+        gfx.clear();
+
+        // 12. Helper Ship Purple (Stijn)
+        gfx.fillStyle(0xaa00ff, 1);
+        gfx.fillTriangle(16, 0, 0, 32, 32, 32);
+        gfx.generateTexture('helperPurple', 32, 32);
+
         // Destroy when completely done
         gfx.destroy();
 
@@ -535,8 +596,6 @@ class MainScene extends Phaser.Scene {
         this.wasd = this.input.keyboard.addKeys('W,A,S,D');
         this.spacebar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.input.addPointer(2);
-
-
 
         // --- UI: TEXT BALLOON PLACEHOLDER ---
         // Create a container to hold our UI elements on top of the game (Depth 100)
@@ -583,6 +642,8 @@ class MainScene extends Phaser.Scene {
 
         // Tell Phaser to recalculate the UI position if the window resizes
         this.scale.on('resize', this.resizeUI, this);
+
+        this.startTutorial();
     }
 
     // --- REUSABLE HELPER (Modified to accept a padding multiplier) ---
@@ -597,11 +658,19 @@ class MainScene extends Phaser.Scene {
     }
 
     shootLaser() {
-        let laser = this.lasers.get(this.player.x, this.player.y - 20);
-        if (laser) {
-            laser.setActive(true);
-            laser.setVisible(true);
-            laser.body.setVelocityY(-500);
+        if (this.hasDoubleLaser) {
+            // DOUBLE CANNONS: Spawn two lasers slightly offset from the center
+            let laser1 = this.lasers.get(this.player.x - 12, this.player.y - 20);
+            let laser2 = this.lasers.get(this.player.x + 12, this.player.y - 20);
+
+            if (laser1) { laser1.setActive(true).setVisible(true).body.setVelocityY(-600); }
+            if (laser2) { laser2.setActive(true).setVisible(true).body.setVelocityY(-600); }
+        } else {
+            // STANDARD CANNON
+            let laser = this.lasers.get(this.player.x, this.player.y - 20);
+            if (laser) {
+                laser.setActive(true).setVisible(true).body.setVelocityY(-500);
+            }
         }
     }
 
@@ -723,9 +792,6 @@ class MainScene extends Phaser.Scene {
         this.dialogue = new DialogueManager(this);
         this.scale.on('resize', () => this.dialogue.resize(this.cameras.main), this);
         this.dialogue.resize(this.cameras.main);
-
-        // Start the interactive tutorial
-        this.startTutorial();
     }
 
     startTutorial() {
@@ -1141,19 +1207,37 @@ class MainScene extends Phaser.Scene {
     }
 
     startBossAttacks() {
-        // Boss fires a laser every 800ms
+        // Clear the old timer just in case we are restarting attacks for Phase 2
+        if (this.bossShootTimer) this.bossShootTimer.remove();
+
+        // Speed up the fire rate in Phase 2 (from 800ms down to 600ms)
+        let currentDelay = this.phase2Triggered ? 600 : 800;
+
         this.bossShootTimer = this.time.addEvent({
-            delay: 800,
+            delay: currentDelay,
             callback: () => {
                 if (!this.bossActive) return;
 
-                // Spawn a laser at the boss's location
-                let laser = this.bossLasers.get(this.boss.x, this.boss.y + 75);
-                if (laser) {
-                    laser.setActive(true).setVisible(true);
+                if (this.phase2Triggered) {
+                    // PHASE 2: Dual purple lasers that track faster!
+                    let laser1 = this.bossLasers.get(this.boss.x - 40, this.boss.y + 50);
+                    let laser2 = this.bossLasers.get(this.boss.x + 40, this.boss.y + 50);
 
-                    // Make it slightly harder: Aim roughly at the player!
-                    this.physics.moveToObject(laser, this.player, 400); // 400 is the laser speed
+                    if (laser1) {
+                        laser1.setActive(true).setVisible(true).setTint(0xff00ff); // Magenta!
+                        this.physics.moveToObject(laser1, this.player, 550); // 550 speed!
+                    }
+                    if (laser2) {
+                        laser2.setActive(true).setVisible(true).setTint(0xff00ff);
+                        this.physics.moveToObject(laser2, this.player, 550);
+                    }
+                } else {
+                    // PHASE 1: Standard single orange laser
+                    let laser = this.bossLasers.get(this.boss.x, this.boss.y + 75);
+                    if (laser) {
+                        laser.setActive(true).setVisible(true).clearTint();
+                        this.physics.moveToObject(laser, this.player, 400); // 400 speed
+                    }
                 }
             },
             callbackScope: this,
@@ -1163,6 +1247,8 @@ class MainScene extends Phaser.Scene {
 
     hitBoss(object1, object2) {
         if (!this.bossActive) return;
+
+        if (this.bossShielded) return; // NEW: Bullets do nothing to the shield!
 
         // 1. Fool-proof check: Figure out exactly which item is the laser and which is the boss
         let laser = (object1.texture && object1.texture.key === 'laser') ? object1 : object2;
@@ -1191,6 +1277,11 @@ class MainScene extends Phaser.Scene {
         const barWidth = this.cameras.main.width * 0.6;
         this.bossBarFill.setSize(barWidth * healthPercent, 20);
 
+        // NEW: Check for Phase 2 Trigger (90% Health)
+        if (!this.phase2Triggered && this.bossHealth <= (this.bossMaxHealth * 0.90)) {
+            this.triggerBossPhase2();
+        }
+
         // 4. Defeat Check
         if (this.bossHealth <= 0) {
             this.bossActive = false;
@@ -1206,6 +1297,120 @@ class MainScene extends Phaser.Scene {
         // To do this cleanly, we'll extract the health reduction into a helper, 
         // but for now, we can just copy your existing damage logic or call hitPlayer with a dummy enemy.
         this.hitPlayer(player, bossLaser);
+    }
+
+    triggerBossPhase2() {
+        this.phase2Triggered = true;
+        this.bossActive = false; // Boss stops shooting
+        this.bossShielded = true; // Boss stops taking damage
+
+        if (this.bossShootTimer) this.bossShootTimer.remove(); // Stop the lasers
+
+        // 1. Draw a glowing cyan shield around the Boss
+        this.bossShieldVisual = this.add.circle(this.boss.x, this.boss.y, 120, 0x00ffff, 0.2).setDepth(6);
+        this.bossShieldVisual.setStrokeStyle(4, 0x00ffff, 0.8);
+
+        // 2. Trigger the HQ Dialogue
+        this.dialogue.startDialogue([{
+            character: 'blonde_guy_comms',
+            text: "STIJN AND JAMES HAVE COME TO HELP YOU WITH THEIR SPACESHIPS! IT'S TIME TO SCALE UP WITH THE UPGRADES THEY HAVE BROUGHT FOR YOUR SPACESHIP!",
+            waitForSpacebar: false
+        }]);
+
+        // 3. Wait 12 seconds, clear dialogue, and bring in the helper ships!
+        this.time.delayedCall(12000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+                this.dialogue.next();
+            }
+
+            // Spawn helpers at the bottom edge of the screen as Sprites
+            const cam = this.cameras.main;
+            let helperBlue = this.add.sprite(cam.width * 0.3, cam.height + 50, 'helperBlue').setDepth(9);
+            let helperPurple = this.add.sprite(cam.width * 0.7, cam.height + 50, 'helperPurple').setDepth(9);
+
+            // Store them so we can make them shoot later!
+            this.helperShips = [helperBlue, helperPurple];
+
+            // Animate them sliding up into the battlefield
+            this.tweens.add({
+                targets: this.helperShips,
+                y: cam.height * 0.75,
+                duration: 2500,
+                ease: 'Sine.easeOut',
+                onComplete: () => {
+
+                    // NEW: Add a continuous hovering animation so they look alive!
+                    this.tweens.add({
+                        targets: this.helperShips,
+                        x: '+=60', // Drift right by 60 pixels
+                        duration: 2000,
+                        yoyo: true, // Drift back left
+                        repeat: -1, // Loop forever
+                        ease: 'Sine.easeInOut'
+                    });
+
+                    // 4. Helper Ships arrive, trigger their dialogue
+                    this.dialogue.startDialogue([{
+                        character: 'stijn_spacesuit',
+                        character2: 'james_spacesuit', // NEW: The second portrait!
+                        text: "WE HAVE STRONGER CANNONS AND A MORE POWERFUL BOOSTER FOR YOUR SPACESHIP! AND OF COURSE ARE WE HERE TO HELP!",
+                        waitForSpacebar: false
+                    }]);
+
+                    // 5. Wait 10 seconds, grant upgrades, and RESUME FIGHT!
+                    this.time.delayedCall(10000, () => {
+                        if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn_spacesuit') {
+                            this.dialogue.next();
+                        }
+
+                        // APPLY UPGRADES!
+                        this.player.setTexture('playerShipUpgraded');
+                        this.playerSpeed = 500;
+                        this.hasDoubleLaser = true;
+
+                        // DROP BOSS SHIELD
+                        this.bossShieldVisual.destroy();
+                        this.bossShielded = false;
+
+                        // RESUME BOSS ATTACKS
+                        this.bossActive = true;
+                        this.startBossAttacks();
+
+                        // UPGRADE: Make the boss slowly drift left and right!
+                        this.tweens.add({
+                            targets: this.boss,
+                            x: this.cameras.main.centerX + 150, // Drift right by 150 pixels
+                            duration: 2500, // Takes 2.5 seconds to drift one way
+                            yoyo: true, // Drift back to the left
+                            repeat: -1, // Loop forever
+                            ease: 'Sine.easeInOut'
+                        });
+
+                        // NEW: START HELPER ATTACKS! (They shoot very slowly)
+                        this.helperShootTimer = this.time.addEvent({
+                            delay: 2500, // Shoots once every 2.5 seconds
+                            callback: () => {
+                                if (!this.bossActive || this.bossShielded) return;
+
+                                this.helperShips.forEach(ship => {
+                                    let laser = this.lasers.get(ship.x, ship.y - 20);
+                                    if (laser) {
+                                        laser.setActive(true).setVisible(true);
+                                        laser.setTint(0x00ffff);
+
+                                        // UPGRADE: Aim directly at the boss instead of just shooting straight up!
+                                        this.physics.moveToObject(laser, this.boss, 400);
+                                    }
+                                });
+                            },
+                            callbackScope: this,
+                            loop: true
+                        });
+
+                    });
+                }
+            });
+        });
     }
 
     update(time, delta) {
