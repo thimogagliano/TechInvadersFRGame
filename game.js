@@ -1,3 +1,25 @@
+class TitleScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'TitleScene' });
+    }
+
+    create() {
+        // 1. Grab your HTML title screen elements
+        const startScreen = document.getElementById('start-screen');
+        const playButton = document.getElementById('play-button');
+
+        // 2. Make sure the HTML screen is visible
+        startScreen.style.display = 'flex';
+
+        // 3. When the player clicks "PLAY GAME", hide the HTML and start the game!
+        // (We use .onclick instead of addEventListener so it doesn't duplicate if they play twice)
+        playButton.onclick = () => {
+            startScreen.style.display = 'none';
+            this.scene.start('OfficeScene');
+        };
+    }
+}
+
 class DialogueManager {
     constructor(scene) {
         this.scene = scene;
@@ -276,9 +298,15 @@ class OfficeScene extends Phaser.Scene {
         const inputField = document.getElementById('player-name-input');
         const errorMsg = document.getElementById('name-error-msg'); // Grab the new error element
 
+        // --- NEW: HARD RESET FOR "PLAY AGAIN" ---
+        // This guarantees the HTML form is completely wiped clean every time it opens!
+        inputField.value = "";           // Clear the old name
+        inputField.disabled = false;     // Re-enable typing
+        submitBtn.disabled = false;      // Re-enable the button
+        submitBtn.innerText = "SUBMIT";  // Change it back from "CHECKING..."
+        errorMsg.innerText = "";         // Clear any old errors
         inputScreen.style.display = 'flex';
         inputField.focus();
-        errorMsg.innerText = ""; // Clear any old errors
 
         this.dialogue.startDialogue([{
             character: 'blonde_guy',
@@ -296,7 +324,7 @@ class OfficeScene extends Phaser.Scene {
             return new Promise((resolve) => {
                 setTimeout(() => {
                     // Mock list of names already "in the database"
-                    const takenNames = ["STIJN", "JAMES", "ROBBIN", "AMISHA", "BRADLEY"];
+                    const takenNames = [];
                     if (takenNames.includes(nameToCheck)) {
                         resolve(false); // Name is taken
                     } else {
@@ -386,6 +414,13 @@ class OfficeScene extends Phaser.Scene {
 class MainScene extends Phaser.Scene {
     constructor() {
         super({ key: 'MainScene' });
+    }
+
+    // NEW: Catch the data sent from the OfficeScene
+    init(data) {
+        // If a name was passed, save it. Otherwise, use a fallback.
+        this.playerName = data.playerName || "ROBOTFIGHTER01";
+
         this.playerSpeed = 300;
         this.lastFired = 0;
         this.fireRate = 250;
@@ -425,12 +460,6 @@ class MainScene extends Phaser.Scene {
         this.phase2Triggered = false;
         this.bossShielded = false;
         this.hasDoubleLaser = false;
-    }
-
-    // NEW: Catch the data sent from the OfficeScene
-    init(data) {
-        // If a name was passed, save it. Otherwise, use a fallback.
-        this.playerName = data.playerName || "ROBOTFIGHTER01";
     }
 
     // TODO: When you have your real space background, uncomment this:
@@ -1461,6 +1490,16 @@ class MainScene extends Phaser.Scene {
         this.currentPhase = 99; // Set this early to disable player controls
         this.input.keyboard.enabled = false;
 
+        // NEW: Auto-pilot the player into a perfect V-formation!
+        const cam = this.cameras.main;
+        this.tweens.add({
+            targets: this.player,
+            x: cam.centerX,
+            y: cam.height * 0.75, // Align vertically with Stijn and James
+            duration: 1500, // Drift smoothly into place over 1.5 seconds
+            ease: 'Sine.easeInOut'
+        });
+
         // 1. Play the breaking animation
         this.boss.play('boss_destruction');
 
@@ -1526,12 +1565,20 @@ class MainScene extends Phaser.Scene {
                 irisGraphics.strokeCircle(cam.centerX, cam.centerY, irisObj.r + 1500);
             },
             onComplete: () => {
-                this.add.text(cam.centerX, cam.centerY, "MISSION ACCOMPLISHED", {
+                let victoryText = this.add.text(cam.centerX, cam.centerY, "MISSION ACCOMPLISHED", {
                     fontFamily: 'Courier, monospace',
                     fontSize: '32px',
                     color: '#ffffff',
                     fontStyle: 'bold'
                 }).setOrigin(0.5).setDepth(201);
+
+                // Wait 3 seconds, then transition to the PartyScene!
+                this.time.delayedCall(3000, () => {
+                    this.scene.start('PartyScene', {
+                        playerName: this.playerName,
+                        score: this.score
+                    });
+                });
             }
         });
     }
@@ -1545,38 +1592,45 @@ class MainScene extends Phaser.Scene {
         // If controls are reversed, multiply the speed by -1
         let currentSpeed = this.controlsReversed ? -this.playerSpeed : this.playerSpeed;
 
-        if (this.cursors.left.isDown || this.wasd.A.isDown) {
-            this.player.setVelocityX(-currentSpeed);
-            isMoving = true;
-        } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
-            this.player.setVelocityX(currentSpeed);
-            isMoving = true;
-        }
+        // NEW: ONLY allow movement and touch controls if we are NOT in the Finale!
+        if (this.currentPhase !== 99) {
 
-        if (this.cursors.up.isDown || this.wasd.W.isDown) {
-            this.player.setVelocityY(-currentSpeed);
-            isMoving = true;
-        } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
-            this.player.setVelocityY(currentSpeed);
-            isMoving = true;
-        }
+            // --- KEYBOARD CONTROLS ---
+            let currentSpeed = this.controlsReversed ? -this.playerSpeed : this.playerSpeed;
 
-        if (this.spacebar.isDown) {
-            isShooting = true;
-        }
-
-        // --- TOUCH CONTROLS ---
-        this.input.manager.pointers.forEach(pointer => {
-            if (pointer.isDown) {
-                if (pointer.x < this.cameras.main.width / 2) {
-                    this.physics.moveTo(this.player, pointer.x, pointer.y, this.playerSpeed);
-                    isMoving = true;
-                }
-                if (pointer.x >= this.cameras.main.width / 2) {
-                    isShooting = true;
-                }
+            if (this.cursors.left.isDown || this.wasd.A.isDown) {
+                this.player.setVelocityX(-currentSpeed);
+                isMoving = true;
+            } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+                this.player.setVelocityX(currentSpeed);
+                isMoving = true;
             }
-        });
+
+            if (this.cursors.up.isDown || this.wasd.W.isDown) {
+                this.player.setVelocityY(-currentSpeed);
+                isMoving = true;
+            } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
+                this.player.setVelocityY(currentSpeed);
+                isMoving = true;
+            }
+
+            if (this.spacebar.isDown) {
+                isShooting = true;
+            }
+
+            // --- TOUCH CONTROLS ---
+            this.input.manager.pointers.forEach(pointer => {
+                if (pointer.isDown) {
+                    if (pointer.x < this.cameras.main.width / 2) {
+                        this.physics.moveTo(this.player, pointer.x, pointer.y, this.playerSpeed);
+                        isMoving = true;
+                    }
+                    if (pointer.x >= this.cameras.main.width / 2) {
+                        isShooting = true;
+                    }
+                }
+            });
+        }
 
         // --- TUTORIAL PROGRESSION LOGIC ---
         if (this.tutorialState === 'movement') {
@@ -1728,6 +1782,249 @@ class MainScene extends Phaser.Scene {
     }
 }
 
+class PartyScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'PartyScene' });
+    }
+
+    init(data) {
+        this.playerName = data.playerName || "HERO";
+        this.finalScore = data.score || 0;
+    }
+
+    create() {
+        const cam = this.cameras.main;
+
+        // --- 1. GENERATE PLACEHOLDER TEXTURES ---
+        let gfx = this.make.graphics({ x: 0, y: 0, add: false });
+
+        // Festive Background Frame 1 (Darker Gray with confetti)
+        gfx.fillStyle(0x444455, 1).fillRect(0, 0, 800, 600);
+        gfx.fillStyle(0xff0000, 1).fillCircle(100, 100, 10);
+        gfx.fillStyle(0x00ff00, 1).fillCircle(600, 200, 10);
+        gfx.fillStyle(0x0000ff, 1).fillCircle(300, 500, 10);
+        gfx.generateTexture('party_bg_1', 800, 600);
+        gfx.clear();
+
+        // Festive Background Frame 2 (Slightly lighter with shifted confetti)
+        gfx.fillStyle(0x555566, 1).fillRect(0, 0, 800, 600);
+        gfx.fillStyle(0xffaa00, 1).fillCircle(120, 120, 10);
+        gfx.fillStyle(0x00ffff, 1).fillCircle(580, 220, 10);
+        gfx.fillStyle(0xff00ff, 1).fillCircle(320, 480, 10);
+        gfx.generateTexture('party_bg_2', 800, 600);
+        gfx.clear();
+
+        // Leaderboard Panel
+        gfx.fillStyle(0x222222, 0.9).fillRoundedRect(0, 0, 400, 300, 16);
+        gfx.lineStyle(4, 0x00ffff, 1).strokeRoundedRect(0, 0, 400, 300, 16);
+        gfx.generateTexture('leaderboard_bg', 400, 300);
+        gfx.clear();
+
+        // Button Background
+        gfx.fillStyle(0x0088ff, 1).fillRoundedRect(0, 0, 120, 40, 8);
+        gfx.generateTexture('btn_bg', 120, 40);
+        gfx.destroy();
+
+        // --- 2. CREATE ANIMATED BACKGROUND ---
+        this.anims.create({
+            key: 'party_dance',
+            frames: [{ key: 'party_bg_1' }, { key: 'party_bg_2' }],
+            frameRate: 2, // Swaps every half second
+            repeat: -1
+        });
+
+        this.bg = this.add.sprite(cam.centerX, cam.centerY, 'party_bg_1').play('party_dance');
+        this.bg.setDisplaySize(cam.width, cam.height);
+
+        // --- 3. SETUP DIALOGUE MANAGER ---
+        this.dialogue = new DialogueManager(this);
+        this.scale.on('resize', () => this.dialogue.resize(this.cameras.main), this);
+        this.dialogue.resize(cam);
+
+        // --- 4. THE "IRIS IN" TRANSITION ---
+        let irisGraphics = this.add.graphics().setDepth(200);
+        let maxRadius = Math.max(cam.width, cam.height);
+        let irisObj = { r: 0 }; // Start completely closed (black screen)
+
+        // Draw the initial black screen so it doesn't flash
+        irisGraphics.lineStyle(3000, 0x000000, 1);
+        irisGraphics.strokeCircle(cam.centerX, cam.centerY, irisObj.r + 1500);
+
+        this.tweens.add({
+            targets: irisObj,
+            r: maxRadius, // Open up to reveal the screen
+            duration: 2500,
+            ease: 'Sine.easeInOut',
+            onUpdate: () => {
+                irisGraphics.clear();
+                irisGraphics.lineStyle(3000, 0x000000, 1);
+                irisGraphics.strokeCircle(cam.centerX, cam.centerY, irisObj.r + 1500);
+            },
+            onComplete: () => {
+                irisGraphics.destroy(); // Remove the black cover
+                this.startSequence(); // Start the timing sequence!
+            }
+        });
+    }
+
+    startSequence() {
+        // 1. Wait 2 seconds, then show first dialogue
+        this.time.delayedCall(2000, () => {
+            this.dialogue.startDialogue([{
+                character: 'blonde_guy',
+                text: "AWESOME! THE ROGUE AI ROBOTS HAVE BEEN DEFEATED, THANK YOU FOR YOUR HELP!",
+                waitForSpacebar: false
+            }]);
+
+            // 2. Wait 4 seconds, then hide dialogue and show Leaderboard
+            this.time.delayedCall(4000, () => {
+                this.dialogue.uiContainer.setVisible(false);
+                this.dialogue.currentMessage = null;
+
+                this.showLeaderboard();
+            });
+        });
+    }
+
+    showLeaderboard() {
+        const cam = this.cameras.main;
+
+        // --- 1. MOCK DATABASE LOGIC (localStorage) ---
+        // Fetch existing scores, or start a new empty array if it's their first time playing
+        let leaderboard = JSON.parse(localStorage.getItem('futureReadyLeaderboard')) || [];
+
+        // Check if this specific player name is already in the database
+        let existingPlayerIndex = leaderboard.findIndex(p => p.name === this.playerName);
+
+        if (existingPlayerIndex !== -1) {
+            // Player exists! Only overwrite their score if the NEW score is higher
+            if (this.finalScore > leaderboard[existingPlayerIndex].score) {
+                leaderboard[existingPlayerIndex].score = this.finalScore;
+            }
+        } else {
+            // Brand new player, add them to the list!
+            leaderboard.push({ name: this.playerName, score: this.finalScore });
+        }
+
+        // Sort the entire leaderboard from highest score to lowest score
+        leaderboard.sort((a, b) => b.score - a.score);
+
+        // Save the updated list back into the browser's permanent memory
+        localStorage.setItem('futureReadyLeaderboard', JSON.stringify(leaderboard));
+
+        // Find out what rank the player got on this run!
+        let playerRank = leaderboard.findIndex(p => p.name === this.playerName) + 1;
+
+
+        // --- 2. BUILD THE UI ---
+        this.lbContainer = this.add.container(cam.centerX, cam.height + 300).setDepth(50);
+
+        let bg = this.add.image(0, 0, 'leaderboard_bg');
+        let title = this.add.text(0, -120, "TOP PILOTS", { fontFamily: 'Courier', fontSize: '28px', color: '#00ffff', fontStyle: 'bold' }).setOrigin(0.5);
+
+        this.lbContainer.add([bg, title]);
+
+        // Draw the Top 5 scores
+        let startY = -70;
+        let limit = Math.min(5, leaderboard.length); // Only show top 5 max
+
+        for (let i = 0; i < limit; i++) {
+            let entry = leaderboard[i];
+            let isCurrentPlayer = (entry.name === this.playerName);
+
+            // Highlight the current player in green, others in white
+            let textColor = isCurrentPlayer ? '#00ff00' : '#ffffff';
+            let rankText = `#${i + 1}  ${entry.name.padEnd(15, ' ')} ${entry.score.toString().padStart(6, '0')}`;
+
+            let row = this.add.text(0, startY + (i * 30), rankText, {
+                fontFamily: 'Courier',
+                fontSize: '20px',
+                color: textColor,
+                fontStyle: isCurrentPlayer ? 'bold' : 'normal'
+            }).setOrigin(0.5);
+
+            this.lbContainer.add(row);
+        }
+
+        // Draw a separator line
+        let line = this.add.rectangle(0, 80, 300, 2, 0x555555);
+
+        // Show the player's personal placement at the bottom
+        let personalText = this.add.text(0, 110, `YOUR RANK: #${playerRank} | SCORE: ${this.finalScore}`, {
+            fontFamily: 'Courier',
+            fontSize: '18px',
+            color: '#ffaa00',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        this.lbContainer.add([line, personalText]);
+
+        // --- 3. ANIMATE IT ONTO SCREEN ---
+        this.tweens.add({
+            targets: this.lbContainer,
+            y: cam.centerY - 50,
+            duration: 1000,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                this.time.delayedCall(2000, () => {
+                    this.dialogue.startDialogue([{
+                        character: 'blonde_guy',
+                        text: "THANK YOU FOR PLAYING!",
+                        waitForSpacebar: false
+                    }]);
+
+                    this.createButtons(); // Bring in the interactive buttons!
+                });
+            }
+        });
+    }
+
+    createButtons() {
+        const cam = this.cameras.main;
+        const btnY = cam.centerY + 140; // Positioned right under the leaderboard
+
+        // Helper function to create interactive buttons
+        const createBtn = (x, label, callback) => {
+            let container = this.add.container(x, btnY).setDepth(50).setAlpha(0); // Start hidden
+            let bg = this.add.image(0, 0, 'btn_bg').setInteractive({ useHandCursor: true });
+            let text = this.add.text(0, 0, label, { fontFamily: 'Courier', fontSize: '16px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+
+            container.add([bg, text]);
+
+            // Hover effects
+            bg.on('pointerover', () => bg.setTint(0x00ffff));
+            bg.on('pointerout', () => bg.clearTint());
+            bg.on('pointerdown', () => {
+                bg.setTint(0x00aa00);
+                callback();
+            });
+
+            // Fade them in
+            this.tweens.add({ targets: container, alpha: 1, duration: 500 });
+        };
+
+        // Create the three buttons evenly spaced
+        createBtn(cam.centerX - 140, "SHARE", () => {
+            console.log("Player clicked Share!");
+            // Optional: Copy score to clipboard!
+            navigator.clipboard.writeText(`I just scored ${this.finalScore} defending Earth in Future Ready! Can you beat me?`);
+            alert("Score copied to clipboard! Ready to share!");
+        });
+
+        createBtn(cam.centerX, "PLAY AGAIN", () => {
+            // Drop the old name data! Start completely fresh.
+            this.scene.start('OfficeScene');
+        });
+
+        createBtn(cam.centerX + 140, "EXIT", () => {
+            console.log("Exiting to Main Menu...");
+
+            // Cleanly transition back to the TitleScene!
+            this.scene.start('TitleScene');
+        });
+    }
+}
+
 // --- GAME CONFIGURATION ---
 const config = {
     type: Phaser.AUTO,
@@ -1746,19 +2043,11 @@ const config = {
             debug: false
         }
     },
-    scene: [OfficeScene, MainScene]
+    // NEW: Add TitleScene as the VERY FIRST scene in the array so it loads automatically!
+    scene: [TitleScene, OfficeScene, MainScene, PartyScene]
 };
 
-// Wait for the DOM to load
+// Boot the game immediately when the webpage loads
 document.addEventListener('DOMContentLoaded', () => {
-    const playButton = document.getElementById('play-button');
-    const startScreen = document.getElementById('start-screen');
-
-    playButton.addEventListener('click', () => {
-        // 1. Hide the HTML overlay
-        startScreen.style.display = 'none';
-
-        // 2. Start the Phaser Game
-        const game = new Phaser.Game(config);
-    });
+    const game = new Phaser.Game(config);
 });
