@@ -21,19 +21,21 @@ class TitleScene extends Phaser.Scene {
 }
 
 class DialogueManager {
-    constructor(scene) {
+    constructor(scene, allowSkip = false) {
         this.scene = scene;
+        this.allowSkip = allowSkip; // Save the setting!
+
         this.queue = [];
         this.currentIndex = 0;
         this.isTyping = false;
         this.currentMessage = null;
         this.typewriterTimer = null;
-        this.onComplete = null; // NEW: Stores what to do when dialogue finishes
+        this.onComplete = null;
 
         // --- PORTRAIT DICTIONARY ---
         this.portraits = {
             'blonde_guy': 0xffcc00,
-            'blonde_guy_comms': 0xff9900, // NEW: Slightly darker/different color for the comms version
+            'blonde_guy_comms': 0xff9900,
             'green_hoodie': 0x00ff00,
             'james_spacesuit': 0x00ffff,
             'stijn': 0xff55aa,
@@ -50,9 +52,8 @@ class DialogueManager {
         this.dialogBox.setStrokeStyle(4, 0x000000);
 
         this.portrait = this.scene.add.rectangle(0, 0, 80, 80, this.portraits['default']);
-        // NEW: The secondary character portrait (Right)
         this.portraitSecondary = this.scene.add.rectangle(0, 0, 80, 80, 0x4488ff).setOrigin(0, 0).setStrokeStyle(2, 0x000000);
-        this.portraitSecondary.setVisible(false); // Hidden by default!
+        this.portraitSecondary.setVisible(false);
         this.portrait.setOrigin(0, 0);
         this.portrait.setStrokeStyle(2, 0x000000);
 
@@ -63,7 +64,6 @@ class DialogueManager {
             fontStyle: 'bold'
         });
 
-        // Make sure to add it to your UI container so it renders on top!
         this.uiContainer.add([this.dialogBox, this.portrait, this.portraitSecondary, this.dialogText]);
 
         // --- SETUP INPUT (SPACEBAR) ---
@@ -190,17 +190,28 @@ class DialogueManager {
 
     // --- INPUT HANDLING ---
     handleInput() {
-        // 1. Ignore if box is hidden
+        // 1. Ignore if box is hidden or no message is loaded
         if (!this.uiContainer.visible) return;
-
-        // 2. Ignore if there is no current message loaded
         if (!this.currentMessage) return;
 
-        // 3. Ignore if this message doesn't need spacebar (combat comms)
-        if (!this.currentMessage.waitForSpacebar) return;
+        // 2. THE SKIP LOGIC: If it's typing AND we are allowed to skip...
+        if (this.isTyping && this.allowSkip) {
+            // Stop the typewriter timer immediately
+            if (this.typewriterTimer) this.typewriterTimer.remove();
 
-        // 4. Ignore if it is currently typing out the letters
+            // Force the full text to appear instantly
+            this.dialogText.setText(this.currentMessage.text);
+
+            // Tell the manager it is done typing!
+            this.isTyping = false;
+            return; // Stop here so they have to press Spacebar ONE MORE TIME to close it
+        }
+
+        // 3. Ignore if it is currently typing and skipping is NOT allowed
         if (this.isTyping) return;
+
+        // 4. Ignore if this message doesn't need spacebar (combat comms)
+        if (!this.currentMessage.waitForSpacebar) return;
 
         // 5. Safe to proceed to the next message!
         this.showNextMessage();
@@ -227,6 +238,7 @@ class OfficeScene extends Phaser.Scene {
     */
 
     create() {
+        this.input.keyboard.clearCaptures();
         // --- PLACEHOLDER GENERATOR (Remove when using real images) ---
         let gfx = this.make.graphics({ x: 0, y: 0, add: false });
         gfx.fillStyle(0x4a4f5c, 1).fillRect(0, 0, 800, 600).generateTexture('office_normal', 800, 600);
@@ -252,8 +264,10 @@ class OfficeScene extends Phaser.Scene {
         }, this);
 
         // Initialize Dialogue
-        this.dialogue = new DialogueManager(this);
+        this.dialogue = new DialogueManager(this, true);
         this.dialogue.resize(this.cameras.main);
+
+        this.input.keyboard.removeCapture(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
         this.startWelcomeSequence();
 
@@ -305,6 +319,9 @@ class OfficeScene extends Phaser.Scene {
         const submitBtn = document.getElementById('submit-name-button');
         const inputField = document.getElementById('player-name-input');
         const errorMsg = document.getElementById('name-error-msg'); // Grab the new error element
+
+        // This stops Phaser from stealing the Spacebar so you can type freely!
+        this.input.keyboard.enabled = false;
 
         // --- NEW: HARD RESET FOR "PLAY AGAIN" ---
         // This guarantees the HTML form is completely wiped clean every time it opens!
@@ -382,6 +399,9 @@ class OfficeScene extends Phaser.Scene {
             inputField.onkeydown = null;
             submitBtn.onclick = null;
 
+            // --- NEW: TURN PHASER'S KEYBOARD BACK ON! ---
+            this.input.keyboard.enabled = true;
+
             this.startRedAlertSequence(playerName);
         };
 
@@ -426,16 +446,20 @@ class MainScene extends Phaser.Scene {
 
     // NEW: Catch the data sent from the OfficeScene
     init(data) {
-        // If a name was passed, save it. Otherwise, use a fallback.
+        // Catch the name, or use fallback
         this.playerName = data.playerName || "ROBOTFIGHTER01";
+
+        // NEW: Catch the skip flag! If it wasn't passed, default to false.
+        this.skipTutorial = data.skipTutorial || false;
 
         this.playerSpeed = 300;
         this.lastFired = 0;
         this.fireRate = 250;
-        this.score = 0; // NEW: Track the player's score
-        this.health = 3; // NEW: Track the player's health
+        this.score = 0;
+        this.health = 3;
 
-        this.tutorialState = 'movement'; // Tracks: 'movement', 'shooting', 'done'
+        // NEW: If we are skipping, start in the 'done' state so the update loop ignores the keys!
+        this.tutorialState = this.skipTutorial ? 'done' : 'movement';
         this.keysPressed = { W: false, A: false, S: false, D: false };
 
         // NEW: Phase Manager Variables
@@ -727,7 +751,14 @@ class MainScene extends Phaser.Scene {
         // Tell Phaser to recalculate the UI position if the window resizes
         this.scale.on('resize', this.resizeUI, this);
 
-        this.startTutorial();
+        // --- NEW: THE FAST-TRACK LOGIC ---
+        if (this.skipTutorial) {
+            // Skip the tutorial and instantly launch the first wave!
+            this.startGameplay();
+        } else {
+            // First time playing? Run the normal tutorial sequence.
+            this.startTutorial();
+        }
 
         // --- ADD THIS RIGHT BEFORE THE END OF CREATE ---
         // Clean up the global resize listener when this scene shuts down!
@@ -2056,13 +2087,18 @@ class PartyScene extends Phaser.Scene {
         createBtn(cam.centerX - 140, "SHARE", () => {
             console.log("Player clicked Share!");
             // Optional: Copy score to clipboard!
-            navigator.clipboard.writeText(`I just scored ${this.finalScore} defending Earth in Future Ready! Can you beat me?`);
-            alert("Score copied to clipboard! Ready to share!");
+            navigator.clipboard.writeText(`I just scored ${this.finalScore} defending Earth with Future Ready! Can you beat me? https://thimogagliano.github.io/TechInvadersFRGame/`);
+            alert("Score copied to clipboard with a link to the game! Ready to share!");
         });
 
         createBtn(cam.centerX, "PLAY AGAIN", () => {
-            // Drop the old name data! Start completely fresh.
-            this.scene.start('OfficeScene');
+            console.log("Quick Restart Initiated!");
+
+            // Send them STRAIGHT to the action with their name and a skip flag!
+            this.scene.start('MainScene', {
+                playerName: this.playerName,
+                skipTutorial: true
+            });
         });
 
         createBtn(cam.centerX + 140, "EXIT", () => {
