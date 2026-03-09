@@ -23,7 +23,7 @@ class TitleScene extends Phaser.Scene {
 class DialogueManager {
     constructor(scene, allowSkip = false) {
         this.scene = scene;
-        this.allowSkip = allowSkip; // Save the setting!
+        this.allowSkip = allowSkip;
 
         this.queue = [];
         this.currentIndex = 0;
@@ -64,7 +64,15 @@ class DialogueManager {
             fontStyle: 'bold'
         });
 
-        this.uiContainer.add([this.dialogBox, this.portrait, this.portraitSecondary, this.dialogText]);
+        // --- NEW: THE HINT TEXT ---
+        this.hintText = this.scene.add.text(0, 0, "", {
+            fontFamily: 'Courier, monospace',
+            fontSize: '14px',
+            color: '#555555', // Dark gray for a subtle hint
+            fontStyle: 'italic' // Italicized to look like a UI prompt
+        }).setOrigin(1, 1); // Anchors exactly to the bottom right
+
+        this.uiContainer.add([this.dialogBox, this.portrait, this.portraitSecondary, this.dialogText, this.hintText]);
 
         // --- SETUP INPUT (SPACEBAR) ---
         this.spacebar = this.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
@@ -86,7 +94,6 @@ class DialogueManager {
         this.portrait.setPosition(portraitX, portraitY);
         this.portrait.setSize(portraitSize, portraitSize);
 
-        // NEW: Position the secondary portrait (Right side of the box)
         const rightPortraitX = marginX + boxWidth - portraitSize - (boxHeight * 0.125);
         this.portraitSecondary.setPosition(rightPortraitX, portraitY);
         this.portraitSecondary.setSize(portraitSize, portraitSize);
@@ -95,34 +102,30 @@ class DialogueManager {
         const textY = marginY + 15;
         this.dialogText.setPosition(textX, textY);
 
-        this.dialogText.setWordWrapWidth(boxWidth - portraitSize - 40);
+        // NEW: Position the hint text at the bottom right corner of the box
+        this.hintText.setPosition(marginX + boxWidth - 15, marginY + boxHeight - 10);
 
         const dynamicFontSize = Math.max(12, Math.min(24, cam.height * 0.025));
         this.dialogText.setFontSize(dynamicFontSize + 'px');
+
+        // Scale the hint text to always be slightly smaller than the main text
+        this.hintText.setFontSize(Math.max(10, dynamicFontSize - 4) + 'px');
     }
 
-    // --- CORE LOGIC (Now accepts the onComplete callback!) ---
     startDialogue(messages, onComplete) {
-        // THE ULTIMATE FIX: If we forgot the [ ] array brackets, automatically wrap it in an array!
-        if (!Array.isArray(messages)) {
-            messages = [messages];
-        }
-
+        if (!Array.isArray(messages)) messages = [messages];
         this.queue = messages;
         this.currentIndex = 0;
         this.onComplete = onComplete;
         this.uiContainer.setVisible(true);
-        this.isTyping = false; // Reset typing flag
-
+        this.isTyping = false;
         this.showNextMessage();
     }
 
     showNextMessage() {
-        // 1. End of queue check: Close the box safely
         if (!this.queue || this.currentIndex >= this.queue.length) {
             this.uiContainer.setVisible(false);
             this.currentMessage = null;
-
             if (this.onComplete) {
                 const safeCallback = this.onComplete;
                 this.onComplete = null;
@@ -131,10 +134,7 @@ class DialogueManager {
             return;
         }
 
-        // 2. Grab the message
         let message = this.queue[this.currentIndex];
-
-        // 3. Failsafe: If the array had a weird empty slot, skip it and move on
         if (!message) {
             this.currentIndex++;
             return this.showNextMessage();
@@ -142,78 +142,79 @@ class DialogueManager {
 
         this.currentMessage = message;
 
-        // 4. Portrait 1 (Left)
-        if (this.portraits[message.character]) {
-            this.portrait.setFillStyle(this.portraits[message.character]);
-        }
+        if (this.portraits[message.character]) this.portrait.setFillStyle(this.portraits[message.character]);
 
-        // 5. Portrait 2 (Right) & Word Wrap
         if (message.character2) {
-            if (this.portraits[message.character2]) {
-                this.portraitSecondary.setFillStyle(this.portraits[message.character2]);
-            }
+            if (this.portraits[message.character2]) this.portraitSecondary.setFillStyle(this.portraits[message.character2]);
             this.portraitSecondary.setVisible(true);
-            let doubleWrapWidth = this.dialogBox.width - (this.portrait.width * 2) - 60;
-            this.dialogText.setWordWrapWidth(doubleWrapWidth);
+            this.dialogText.setWordWrapWidth(this.dialogBox.width - (this.portrait.width * 2) - 60);
         } else {
             this.portraitSecondary.setVisible(false);
-            let singleWrapWidth = this.dialogBox.width - this.portrait.width - 40;
-            this.dialogText.setWordWrapWidth(singleWrapWidth);
+            this.dialogText.setWordWrapWidth(this.dialogBox.width - this.portrait.width - 40);
         }
 
-        // 6. Reset text and start Typewriter Effect
         this.dialogText.setText('');
         this.isTyping = true;
         let charIndex = 0;
 
-        if (this.typewriterTimer) {
-            this.typewriterTimer.remove();
+        // --- NEW: Setup the Hint Text for typing ---
+        if (this.allowSkip) {
+            this.hintText.setText("PRESS SPACEBAR TO SKIP");
+            this.hintText.setVisible(true);
+        } else {
+            this.hintText.setVisible(false); // Hide until typing finishes
         }
 
+        if (this.typewriterTimer) this.typewriterTimer.remove();
+
         this.typewriterTimer = this.scene.time.addEvent({
-            delay: 30, // Typing speed
+            delay: 30,
             callback: () => {
                 this.dialogText.text += message.text[charIndex];
                 charIndex++;
                 if (charIndex >= message.text.length) {
                     this.isTyping = false;
                     this.typewriterTimer.remove();
+
+                    // --- NEW: Update hint text when typing finishes naturally ---
+                    if (message.waitForSpacebar) {
+                        this.hintText.setText("PRESS SPACEBAR TO CONTINUE");
+                        this.hintText.setVisible(true);
+                    } else {
+                        // Mid-combat comms shouldn't ask for a spacebar!
+                        this.hintText.setVisible(false);
+                    }
                 }
             },
             callbackScope: this,
             repeat: message.text.length - 1
         });
 
-        // 7. VERY IMPORTANT: Advance the index AFTER everything is set up
         this.currentIndex++;
     }
 
-    // --- INPUT HANDLING ---
     handleInput() {
-        // 1. Ignore if box is hidden or no message is loaded
         if (!this.uiContainer.visible) return;
         if (!this.currentMessage) return;
 
-        // 2. THE SKIP LOGIC: If it's typing AND we are allowed to skip...
         if (this.isTyping && this.allowSkip) {
-            // Stop the typewriter timer immediately
             if (this.typewriterTimer) this.typewriterTimer.remove();
-
-            // Force the full text to appear instantly
             this.dialogText.setText(this.currentMessage.text);
-
-            // Tell the manager it is done typing!
             this.isTyping = false;
-            return; // Stop here so they have to press Spacebar ONE MORE TIME to close it
+
+            // --- NEW: Update hint text when player forcefully skips ---
+            if (this.currentMessage.waitForSpacebar) {
+                this.hintText.setText("PRESS SPACEBAR TO CONTINUE");
+                this.hintText.setVisible(true);
+            } else {
+                this.hintText.setVisible(false);
+            }
+            return;
         }
 
-        // 3. Ignore if it is currently typing and skipping is NOT allowed
         if (this.isTyping) return;
-
-        // 4. Ignore if this message doesn't need spacebar (combat comms)
         if (!this.currentMessage.waitForSpacebar) return;
 
-        // 5. Safe to proceed to the next message!
         this.showNextMessage();
     }
 
