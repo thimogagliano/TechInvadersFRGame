@@ -864,11 +864,8 @@ class MainScene extends Phaser.Scene {
 
         // 5. Check if the player is out of health
         if (this.health <= 0) {
-            this.physics.pause(); // Stop all movement
-            this.player.setTint(0xff0000); // Keep the ship red
-
-            // Turn the dialog text into a Game Over message
-            this.dialogText.setText("CRITICAL FAILURE! REFRESH TO TRY AGAIN.");
+            // NEW: Launch the dramatic Game Over overlay!
+            this.triggerGameOver();
         }
     }
 
@@ -1653,6 +1650,95 @@ class MainScene extends Phaser.Scene {
                     });
                 });
             }
+        });
+    }
+
+    triggerGameOver() {
+        // 1. Lock the game and stop everything
+        this.currentPhase = 99; // Disables keyboard movement
+        this.input.keyboard.enabled = false;
+        this.physics.pause(); // Freezes the player, enemies, and lasers
+        this.player.setTint(0xff0000); // Keep the ship visually damaged
+
+        // Stop the enemy spawners and boss timers just in case!
+        if (this.spawnerTimer) this.spawnerTimer.remove();
+        if (this.bossShootTimer) this.bossShootTimer.remove();
+
+        const cam = this.cameras.main;
+
+        // 2. Create the Game Over UI Container
+        this.gameOverContainer = this.add.container(0, 0).setDepth(300).setAlpha(0);
+
+        // Dark semi-transparent background to dim the gameplay
+        let bg = this.add.rectangle(0, 0, cam.width, cam.height, 0x000000, 0.8).setOrigin(0, 0);
+
+        // "GAME OVER" Title
+        let title = this.add.text(cam.centerX, cam.centerY - 100, "GAME OVER", {
+            fontFamily: 'Courier, monospace',
+            fontSize: '48px',
+            color: '#ff0000',
+            fontStyle: 'bold'
+        }).setOrigin(0.5);
+
+        // Display the Final Score
+        let scoreText = this.add.text(cam.centerX, cam.centerY - 20, `FINAL SCORE: ${this.score}`, {
+            fontFamily: 'Courier, monospace',
+            fontSize: '24px',
+            color: '#ffffff'
+        }).setOrigin(0.5);
+
+        this.gameOverContainer.add([bg, title, scoreText]);
+
+        // 3. Helper function to create the buttons (Reusing your PartyScene logic!)
+        const createBtn = (x, y, label, callback) => {
+            let container = this.add.container(x, y);
+
+            // Draw a blue button box with a white border
+            let btnBg = this.add.rectangle(0, 0, 160, 45, 0x0088ff).setInteractive({ useHandCursor: true });
+            btnBg.setStrokeStyle(2, 0xffffff);
+
+            let text = this.add.text(0, 0, label, { fontFamily: 'Courier', fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+
+            container.add([btnBg, text]);
+
+            // Hover effects
+            btnBg.on('pointerover', () => btnBg.setFillStyle(0x00ffff));
+            btnBg.on('pointerout', () => btnBg.setFillStyle(0x0088ff));
+            btnBg.on('pointerdown', () => {
+                btnBg.setFillStyle(0x00aa00);
+                callback();
+            });
+
+            this.gameOverContainer.add(container);
+        };
+
+        // 4. Create the two buttons
+        createBtn(cam.centerX - 100, cam.centerY + 60, "TRY AGAIN", () => {
+            console.log("Quick Restart Initiated from Game Over!");
+            // Drop them straight back into the action!
+            this.scene.start('MainScene', {
+                playerName: this.playerName,
+                skipTutorial: true
+            });
+        });
+
+        createBtn(cam.centerX + 100, cam.centerY + 60, "EXIT GAME", () => {
+            console.log("Exiting to Main Menu from Game Over...");
+            // Bring the HTML Title Screen back and destroy the game session
+            const startScreen = document.getElementById('start-screen');
+            if (startScreen) {
+                startScreen.style.display = 'flex';
+            }
+            this.game.destroy(true);
+            window.location.reload();
+        });
+
+        // 5. Fade the entire overlay in dramatically over 1 second
+        this.tweens.add({
+            targets: this.gameOverContainer,
+            alpha: 1,
+            duration: 1000,
+            ease: 'Power2'
         });
     }
 
