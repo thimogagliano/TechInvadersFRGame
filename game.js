@@ -57,19 +57,19 @@ class DialogueManager {
         this.portrait.setOrigin(0, 0);
         this.portrait.setStrokeStyle(2, 0x000000);
 
+        // --- MAIN DIALOGUE TEXT ---
         this.dialogText = this.scene.add.text(0, 0, "", {
-            fontFamily: 'Courier, monospace',
-            fontSize: '16px',
+            fontFamily: '"Press Start 2P", Courier, monospace', // <-- Changed to your pixel font!
+            fontSize: '12px', // Slightly smaller base size since pixel fonts are very wide
             color: '#000000',
-            fontStyle: 'bold'
+            lineSpacing: 8 // Adds a little breathing room between lines of text
         });
 
         // --- NEW: THE HINT TEXT ---
         this.hintText = this.scene.add.text(0, 0, "", {
-            fontFamily: 'Courier, monospace',
-            fontSize: '14px',
-            color: '#555555', // Dark gray for a subtle hint
-            fontStyle: 'italic' // Italicized to look like a UI prompt
+            fontFamily: '"Press Start 2P", Courier, monospace', // <-- Changed here too!
+            fontSize: '8px',
+            color: '#555555'
         }).setOrigin(1, 1); // Anchors exactly to the bottom right
 
         this.uiContainer.add([this.dialogBox, this.portrait, this.portraitSecondary, this.dialogText, this.hintText]);
@@ -77,6 +77,9 @@ class DialogueManager {
         // --- SETUP INPUT (SPACEBAR) ---
         this.spacebar = this.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.spacebar.on('down', () => this.handleInput());
+
+        // NEW: Tap anywhere on the screen to advance!
+        this.scene.input.on('pointerdown', () => this.handleInput());
     }
 
     resize(cam) {
@@ -88,9 +91,17 @@ class DialogueManager {
         this.dialogBox.setPosition(marginX, marginY);
         this.dialogBox.setSize(boxWidth, boxHeight);
 
-        const portraitSize = boxHeight * 0.75;
+        // --- NEW: MOBILE SCALING LOGIC ---
+        // If the screen is narrow (like a phone), shrink the portraits to make room for text
+        const isMobile = cam.width < 600;
+        const portraitScale = isMobile ? 0.6 : 0.75;
+
+        const portraitSize = boxHeight * portraitScale;
         const portraitX = marginX + (boxHeight * 0.125);
-        const portraitY = marginY + (boxHeight * 0.125);
+
+        // Center the portrait vertically inside the box
+        const portraitY = marginY + ((boxHeight - portraitSize) / 2);
+
         this.portrait.setPosition(portraitX, portraitY);
         this.portrait.setSize(portraitSize, portraitSize);
 
@@ -102,14 +113,17 @@ class DialogueManager {
         const textY = marginY + 15;
         this.dialogText.setPosition(textX, textY);
 
-        // NEW: Position the hint text at the bottom right corner of the box
         this.hintText.setPosition(marginX + boxWidth - 15, marginY + boxHeight - 10);
 
-        const dynamicFontSize = Math.max(12, Math.min(24, cam.height * 0.025));
-        this.dialogText.setFontSize(dynamicFontSize + 'px');
+        // --- NEW: STRICT FONT SIZING ---
+        // Pixel fonts look terrible if scaled smoothly. Lock them to exact sizes!
+        const dynamicFontSize = isMobile ? 8 : 12; // 8px on phones, 12px on desktop
 
-        // Scale the hint text to always be slightly smaller than the main text
-        this.hintText.setFontSize(Math.max(10, dynamicFontSize - 4) + 'px');
+        this.dialogText.setFontSize(dynamicFontSize + 'px');
+        this.dialogText.setLineSpacing(isMobile ? 4 : 8); // Tighter line spacing on mobile
+
+        // Make the hint text slightly smaller, but readable
+        this.hintText.setFontSize((dynamicFontSize - 2) + 'px');
     }
 
     startDialogue(messages, onComplete) {
@@ -144,13 +158,22 @@ class DialogueManager {
 
         if (this.portraits[message.character]) this.portrait.setFillStyle(this.portraits[message.character]);
 
+        // 5. Portrait 2 (Right) & Advanced Word Wrap
         if (message.character2) {
-            if (this.portraits[message.character2]) this.portraitSecondary.setFillStyle(this.portraits[message.character2]);
+            if (this.portraits[message.character2]) {
+                this.portraitSecondary.setFillStyle(this.portraits[message.character2]);
+            }
             this.portraitSecondary.setVisible(true);
-            this.dialogText.setWordWrapWidth(this.dialogBox.width - (this.portrait.width * 2) - 60);
+
+            let doubleWrapWidth = this.dialogBox.width - (this.portrait.width * 2) - 60;
+            // The 'true' at the end enables advanced word wrapping!
+            this.dialogText.setWordWrapWidth(doubleWrapWidth, true);
         } else {
             this.portraitSecondary.setVisible(false);
-            this.dialogText.setWordWrapWidth(this.dialogBox.width - this.portrait.width - 40);
+
+            let singleWrapWidth = this.dialogBox.width - this.portrait.width - 40;
+            // The 'true' at the end enables advanced word wrapping!
+            this.dialogText.setWordWrapWidth(singleWrapWidth, true);
         }
 
         this.dialogText.setText('');
@@ -159,7 +182,7 @@ class DialogueManager {
 
         // --- NEW: Setup the Hint Text for typing ---
         if (this.allowSkip) {
-            this.hintText.setText("PRESS SPACEBAR TO SKIP");
+            this.hintText.setText("tap / space to skip");
             this.hintText.setVisible(true);
         } else {
             this.hintText.setVisible(false); // Hide until typing finishes
@@ -178,7 +201,7 @@ class DialogueManager {
 
                     // --- NEW: Update hint text when typing finishes naturally ---
                     if (message.waitForSpacebar) {
-                        this.hintText.setText("PRESS SPACEBAR TO CONTINUE");
+                        this.hintText.setText("tap / space to continue");
                         this.hintText.setVisible(true);
                     } else {
                         // Mid-combat comms shouldn't ask for a spacebar!
@@ -204,7 +227,7 @@ class DialogueManager {
 
             // --- NEW: Update hint text when player forcefully skips ---
             if (this.currentMessage.waitForSpacebar) {
-                this.hintText.setText("PRESS SPACEBAR TO CONTINUE");
+                this.hintText.setText("press spacebar to continue");
                 this.hintText.setVisible(true);
             } else {
                 this.hintText.setVisible(false);
@@ -296,17 +319,17 @@ class OfficeScene extends Phaser.Scene {
         this.dialogue.startDialogue([
             {
                 character: 'blonde_guy',
-                text: "WELCOME TO FUTURE READY HQ! HERE WE ARE WORKING ON THE TECHNOLOGY OF THE FUTURE!",
+                text: "Welcome to Future Ready HQ! Here we are working on the technology of the future!",
                 waitForSpacebar: true
             },
             {
                 character: 'blonde_guy',
-                text: "WE HAVE BEEN WAITING FOR YOU, OUR TEAM NEEDS YOUR HELP...",
+                text: "We have been waiting for you, our team needs your help...",
                 waitForSpacebar: true
             },
             {
                 character: 'blonde_guy',
-                text: "BUT FIRST WE NEED TO KNOW YOUR NAME OR HOW YOU WANT TO BE NAMED SO WE CAN EASILY CALL WHEN WE NEED YOU.",
+                text: "But first we need to know your name or how you want to be named so we can easily call when we need you.",
                 waitForSpacebar: true
             }
         ], () => {
@@ -336,7 +359,7 @@ class OfficeScene extends Phaser.Scene {
 
         this.dialogue.startDialogue([{
             character: 'blonde_guy',
-            text: "YOU CAN TYPE YOUR NAME IN THE FIELD WE HAVE MADE!",
+            text: "You can type your name in the field we have made!",
             waitForSpacebar: false
         }]);
 
@@ -363,7 +386,8 @@ class OfficeScene extends Phaser.Scene {
         // --- 3. THE SUBMISSION LOGIC ---
         // Notice the 'async' keyword so we can 'await' the database check
         const processSubmission = async () => {
-            let playerName = inputField.value.trim().toUpperCase();
+            // Now it respects exact casing!
+            let playerName = inputField.value.trim();
 
             // Validation A: Is it empty?
             if (playerName === "") {
@@ -428,8 +452,8 @@ class OfficeScene extends Phaser.Scene {
         strobeEffect(); // Start the flashing
 
         this.dialogue.startDialogue([
-            { character: 'blonde_guy', text: "OH NO!! WE HAVE VERY BAD NEWS! ROGUE AI ROBOTS ARE ABOUT TO ATTACK THE EARTH!", waitForSpacebar: true },
-            { character: 'blonde_guy', text: "IT'S GOOD THAT YOU HAVE ARRIVED, WE HAVE BUILD A SPACESHIP THAT NEEDS TESTING! QUICK, HOP IN AND SAVE US!!", waitForSpacebar: true }
+            { character: 'blonde_guy', text: "Oh no! We have very bad news! Rogue AI robots are about to attack the Earth!", waitForSpacebar: true },
+            { character: 'blonde_guy', text: "It's good that you have arrived, we have built a spaceship that needs testing! Quick, hop in!!", waitForSpacebar: true }
         ], () => {
             // DIAGNOSTIC TOOL: Print all available scenes to the console
             console.log("Phaser loaded these scenes:", this.scene.manager.keys);
@@ -447,8 +471,10 @@ class MainScene extends Phaser.Scene {
 
     // NEW: Catch the data sent from the OfficeScene
     init(data) {
+        //detect touch input   
+        this.isTouch = this.sys.game.device.input.touch;
         // Catch the name, or use fallback
-        this.playerName = data.playerName || "ROBOTFIGHTER01";
+        this.playerName = data.playerName || "RobotFighter007";
 
         // NEW: Catch the skip flag! If it wasn't passed, default to false.
         this.skipTutorial = data.skipTutorial || false;
@@ -717,7 +743,7 @@ class MainScene extends Phaser.Scene {
 
         // 2. Player Name (Left)
         this.playerNameText = this.add.text(0, 0, this.playerName, {
-            fontFamily: 'Courier, monospace',
+            fontFamily: '"Press Start 2P", Courier, monospace',
             color: '#ffffff',
             fontStyle: 'bold'
         });
@@ -725,7 +751,7 @@ class MainScene extends Phaser.Scene {
 
         // 3. Score (Center)
         this.scoreText = this.add.text(0, 0, "SCORE: 0000", {
-            fontFamily: 'Courier, monospace',
+            fontFamily: '"Press Start 2P", Courier, monospace',
             color: '#ffffff',
             fontStyle: 'bold'
         });
@@ -873,44 +899,53 @@ class MainScene extends Phaser.Scene {
     resizeUI() {
         const cam = this.cameras.main;
 
-        // NEW: Force the physics world to resize so the ship doesn't hit an invisible wall!
-        this.physics.world.setBounds(0, 0, cam.width, cam.height);
+        // NEW: Check if the screen is narrow (mobile)
+        const isMobile = cam.width < 600;
 
         // --- TOP BAR SIZING & POSITIONING ---
-        // Set height to 6% of the screen height
         const topBarHeight = cam.height * 0.06;
 
-        // Stretch the background across the entire top
         this.topBarBg.setPosition(0, 0);
         this.topBarBg.setSize(cam.width, topBarHeight);
 
-        // Scale the font size dynamically so it fits nicely inside the bar
-        const topFontSize = Math.max(12, Math.min(24, topBarHeight * 0.6));
+        // --- NEW: STRICT PIXEL FONT SCALING ---
+        // Lock the font to 8px on phones, and 14px on desktops
+        const topFontSize = isMobile ? 8 : 14;
 
         // Position Player Name (2% padding from the left edge)
         this.playerNameText.setFontSize(topFontSize + 'px');
         this.playerNameText.setPosition(cam.width * 0.02, topBarHeight / 2);
 
-        // Position Score (Dead center)
-        this.scoreText.setFontSize(topFontSize + 'px');
-        this.scoreText.setPosition(cam.width / 2, topBarHeight / 2);
-
-        // Position Health Hearts (Starting from the right edge, moving inwards)
-        const heartSize = topBarHeight * 0.5; // Scale heart placeholder size
-        const heartSpacing = heartSize * 1.5; // Add some gap between hearts
+        // --- SCALE THE HEALTH HEARTS ---
+        const heartSize = isMobile ? 12 : 20;
+        const heartSpacing = heartSize * 1.5;
         let startX = cam.width - (cam.width * 0.02); // 2% padding from the right edge
+
+        let lastHeartLeftEdge = startX; // We will use this to track where to put the score!
 
         for (let i = 0; i < this.hearts.length; i++) {
             this.hearts[i].setSize(heartSize, heartSize);
-            // Draw them right-to-left
-            this.hearts[i].setPosition(startX - (i * heartSpacing), topBarHeight / 2);
+            let heartX = startX - (i * heartSpacing);
+            this.hearts[i].setPosition(heartX, topBarHeight / 2);
+
+            // Because the heart origin is right-aligned (1), we calculate its left edge like this:
+            lastHeartLeftEdge = heartX - heartSize;
         }
 
+        // --- POSITION SCORE (RIGHT-ALIGNED) ---
+        // Instead of center, push it to the right, sitting just before the hearts!
+        this.scoreText.setOrigin(1, 0.5); // Forces the text to align to the right
+        this.scoreText.setFontSize(topFontSize + 'px');
+
+        // Add a clean margin (15px mobile / 25px desktop) between the hearts and the score
+        let scoreMargin = isMobile ? 15 : 25;
+        this.scoreText.setPosition(lastHeartLeftEdge - scoreMargin, topBarHeight / 2);
+        // --- BOTTOM DIALOGUE BOX SIZING ---
         // Reserve the bottom 15% for the box, with a little padding
         const boxHeight = cam.height * 0.15;
-        const boxWidth = cam.width * 0.90; // Span 90% of the screen width
-        const marginX = (cam.width - boxWidth) / 2; // Center it horizontally
-        const marginY = cam.height - boxHeight - (cam.height * 0.02); // Just above the bottom edge
+        const boxWidth = cam.width * 0.90;
+        const marginX = (cam.width - boxWidth) / 2;
+        const marginY = cam.height - boxHeight - (cam.height * 0.02);
 
         // Initialize the reusable Dialogue Manager for space!
         this.dialogue = new DialogueManager(this);
@@ -919,46 +954,58 @@ class MainScene extends Phaser.Scene {
     }
 
     startTutorial() {
-        // 1. Draw the floating keys on the screen
         this.createTutorialUI();
 
-        // 2. Trigger the first instruction
-        this.dialogue.startDialogue([{
-            character: 'blonde_guy_comms',
-            text: "CAN YOU HEAR ME? GOOD! LET'S TEST THE THRUSTERS. USE W, A, S, D OR THE ARROW KEYS TO MOVE AROUND!",
-            waitForSpacebar: false // False means it stays on screen until we manually advance it!
-        }]);
+        // Check if we are on a mobile device and give the right instructions
+        if (this.isTouch) {
+            this.dialogue.startDialogue([{
+                character: 'blonde_guy_comms',
+                text: "Drag your finger on the left side of the screen to steer!",
+                waitForSpacebar: false
+            }]);
+        } else {
+            this.dialogue.startDialogue([{
+                character: 'blonde_guy_comms',
+                text: "Can you hear me?... Good! Let's test the thrusters. Use W, A, S, D or the arrow keys to move around!",
+                waitForSpacebar: false
+            }]);
+        }
     }
 
     createTutorialUI() {
-        // Create a container for the floating keys in the center-top of the screen
         this.tutorialUI = this.add.container(this.cameras.main.centerX, this.cameras.main.height * 0.3).setDepth(50);
+        const keyStyle = { fontFamily: '"Press Start 2P", Courier', fontSize: '12px', color: '#000000', fontStyle: 'bold' };
 
-        const keyStyle = { fontFamily: 'Courier, monospace', fontSize: '24px', color: '#000000', fontStyle: 'bold' };
+        if (this.isTouch) {
+            // TOUCH UI: Simple glowing text labels for the sides of the screen
+            let leftText = this.add.text(-this.cameras.main.width * 0.25, 0, "[ LEFT HALF: MOVE ]", { fontFamily: '"Press Start 2P"', fontSize: '10px', color: '#00ffff' }).setOrigin(0.5);
+            let rightText = this.add.text(this.cameras.main.width * 0.25, 0, "[ RIGHT HALF: SHOOT ]", { fontFamily: '"Press Start 2P"', fontSize: '10px', color: '#ff00ff' }).setOrigin(0.5);
+            rightText.setVisible(false); // Hide shoot text initially
 
-        // Helper function to draw a single key
-        const createKey = (x, y, label) => {
-            let bg = this.add.rectangle(x, y, 50, 50, 0xffffff).setStrokeStyle(4, 0x000000);
-            let text = this.add.text(x, y, label, keyStyle).setOrigin(0.5);
-            this.tutorialUI.add([bg, text]);
-            return bg; // Return the background so we can tint it green later
-        };
+            this.tutorialUI.add([leftText, rightText]);
+            this.visualKeys = { leftText, rightText }; // Store them to turn them green later
 
-        // Draw W, A, S, D in a cross formation
-        this.visualKeys = {
-            W: createKey(0, -60, 'W'),
-            A: createKey(-60, 0, 'A'),
-            S: createKey(0, 0, 'S'),
-            D: createKey(60, 0, 'D'),
-            SPACE: createKey(0, 80, 'SPACE')
-        };
+        } else {
+            // DESKTOP UI: Keep your existing helper function and WASD keys here!
+            const createKey = (x, y, label) => {
+                let bg = this.add.rectangle(x, y, 50, 50, 0xffffff).setStrokeStyle(4, 0x000000);
+                let text = this.add.text(x, y, label, keyStyle).setOrigin(0.5);
+                this.tutorialUI.add([bg, text]);
+                return bg;
+            };
 
-        // Make SPACE bar wider
-        this.visualKeys.SPACE.setSize(170, 50);
+            this.visualKeys = {
+                W: createKey(0, -60, 'W'),
+                A: createKey(-60, 0, 'A'),
+                S: createKey(0, 0, 'S'),
+                D: createKey(60, 0, 'D'),
+                SPACE: createKey(0, 80, 'SPACE')
+            };
 
-        // Hide SPACE initially
-        this.visualKeys.SPACE.setVisible(false);
-        this.tutorialUI.getAt(9).setVisible(false); // Hides the "SPACE" text
+            this.visualKeys.SPACE.setSize(170, 50);
+            this.visualKeys.SPACE.setVisible(false);
+            this.tutorialUI.getAt(9).setVisible(false);
+        }
     }
 
     startCutscene() {
@@ -970,7 +1017,7 @@ class MainScene extends Phaser.Scene {
         // 2. Play the first part of the cutscene
         this.dialogue.startDialogue([{
             character: 'blonde_guy',
-            text: "FANTASTIC! EVERYTHING WORKS AND PHASE 1 IS COMPLETED. WE HAVE BUILT THE SPACESHIP AND LAUNCHED IT SUCCESSFULLY!",
+            text: "Fantastic! Everything works and phase 1 is completed. We have built the spaceship and launched it successfully!",
             waitForSpacebar: true
         }], () => {
 
@@ -981,7 +1028,7 @@ class MainScene extends Phaser.Scene {
             // Trigger the second part of the dialogue
             this.dialogue.startDialogue([{
                 character: 'blonde_guy',
-                text: "WE ARE DETECTING INCOMING ROGUE AI ROBOTS. PREPARE FOR COMBAT!", // Note: Replace this with your actual Phase 2 text!
+                text: "We are detecting incoming rogue AI robots. Defeat as many as you can!", // Note: Replace this with your actual Phase 2 text!
                 waitForSpacebar: true
             }], () => {
 
@@ -1008,7 +1055,7 @@ class MainScene extends Phaser.Scene {
         // Give a final Good Luck message that the player can dismiss
         this.dialogue.startDialogue([{
             character: 'blonde_guy_comms',
-            text: "SYSTEMS ARE GREEN! HERE COME THE ROGUE ROBOTS. PROTECT EARTH!!",
+            text: "Systems are green! Here come the rogue robots. Protect Earth!!",
             waitForSpacebar: true
         }]);
 
@@ -1055,7 +1102,7 @@ class MainScene extends Phaser.Scene {
         // 2. Show the Green Hoodie Guy dialogue
         this.dialogue.startDialogue([{
             character: 'green_hoodie', // Matches your DialogueManager portrait key
-            text: "WE HAVE DEVELOPED A FIREWALL FOR YOU TO HELP WITH THE DAMAGE FROM THE ROBOTS!",
+            text: "We have developed a firewall for you to help with the damage from the robots!",
             waitForSpacebar: false // False so they don't have to stop playing to read it
         }]);
 
@@ -1079,7 +1126,7 @@ class MainScene extends Phaser.Scene {
         // NEW: Trigger Stijn's warning dialogue!
         this.dialogue.startDialogue([{
             character: 'stijn',
-            text: "WE HAVE JUST NOTICED THAT THE ROGUE AI ROBOTS HAVE DEVELOPED A COMPUTER VIRUS THAT REVERSES YOUR CONTROLS!",
+            text: "We have just noticed that the rogue AI robots have developed a computer virus that reverses your controls!",
             waitForSpacebar: false // False so they can keep trying to fly!
         }]);
 
@@ -1106,7 +1153,7 @@ class MainScene extends Phaser.Scene {
         // 2. Show the Comms Dialogue
         this.dialogue.startDialogue([{
             character: 'blonde_guy_comms',
-            text: "WE HAVE SENT YOU AN ANTIVIRUS UPDATE FOR THE SHIP!! THIS WILL TURN YOUR CONTROLS BACK TO NORMAL.",
+            text: "We have sent you an antivirus update for the ship!! This will turn your controls back to normal.",
             waitForSpacebar: false
         }]);
 
@@ -1136,7 +1183,7 @@ class MainScene extends Phaser.Scene {
         // 2. Trigger Green Hoodie's Dialogue
         this.dialogue.startDialogue([{
             character: 'green_hoodie',
-            text: "YOU WON'T BELIEVE IT BUT THEY HAVE DEVELOPED SOME ADS THAT CAN BLOCK YOUR VIEW... LIKE SERIOUSLY?...",
+            text: "You won't believe it but they have developed some ads that can block your view... like seriously?...",
             waitForSpacebar: false
         }]);
 
@@ -1154,7 +1201,7 @@ class MainScene extends Phaser.Scene {
         // 1. Trigger Blonde Guy's Dialogue
         this.dialogue.startDialogue([{
             character: 'blonde_guy_comms',
-            text: "WE HAVE DEVELOPED AN ADBLOCKER FOR YOUR SHIP, IT WILL MAKE QUICK WORK OF THESE ADS AND GET RID OF THEM.",
+            text: "We have developed an adblocker for your ship, it will make quick work of these ads and get rid of them.",
             waitForSpacebar: false
         }]);
 
@@ -1232,7 +1279,7 @@ class MainScene extends Phaser.Scene {
         // 1. Trigger the False Victory dialogue
         this.dialogue.startDialogue([{
             character: 'blonde_guy_comms',
-            text: "PHASE 2 IS NOW OVER! WE HAVE SUCCESSFULLY EVOLVED AGAINST THE ROBOTS AND DEFEATED THEM!",
+            text: "Phase 2 is now over! We have successfully evolved against the robots and defeated them!",
             waitForSpacebar: false // Locks the text on screen
         }]);
 
@@ -1250,7 +1297,7 @@ class MainScene extends Phaser.Scene {
                 // 4. Trigger Stijn's panic warning!
                 this.dialogue.startDialogue([{
                     character: 'stijn',
-                    text: "SOMETHING IS WRONG! A VERY BIG OBJECT SEEMS TO BE COMING YOUR WAY!!",
+                    text: "Something is wrong! A very big object seems to be coming your way!!",
                     waitForSpacebar: false
                 }]);
 
@@ -1300,8 +1347,8 @@ class MainScene extends Phaser.Scene {
 
         // Boss Name Text
         this.bossNameText = this.add.text(cam.centerX, barY + barHeight + 5, "Final Rogue AI Superboss XL", {
-            fontFamily: 'Courier, monospace',
-            fontSize: '18px',
+            fontFamily: '"Press Start 2P", Courier, monospace',
+            fontSize: '14px',
             color: '#ff4444',
             fontStyle: 'bold'
         }).setOrigin(0.5, 0);
@@ -1322,7 +1369,7 @@ class MainScene extends Phaser.Scene {
                 // 2. Trigger the panicked dialogue!
                 this.dialogue.startDialogue([{
                     character: 'blonde_guy_comms',
-                    text: "WE DID NOT SEE THIS COMING!!... A FINAL ROGUE AI BOSS!! THIS IS GONNA BE A HARD FIGHT. TEAM FUTURE READY WILL BE ON THEIR WAY TO HELP YOU!",
+                    text: "We did NOT see this coming!!... A final rogue AI boss!! This is gonna be a hard fight. Team Future Ready will be on their way to help you!",
                     waitForSpacebar: false
                 }]);
 
@@ -1457,7 +1504,7 @@ class MainScene extends Phaser.Scene {
         // 2. Trigger the HQ Dialogue
         this.dialogue.startDialogue([{
             character: 'blonde_guy_comms',
-            text: "STIJN AND JAMES HAVE COME TO HELP YOU WITH THEIR SPACESHIPS! IT'S TIME TO SCALE UP WITH THE UPGRADES THEY HAVE BROUGHT FOR YOUR SPACESHIP!",
+            text: "Stijn and James have come to help you with their spaceships! It's time to scale up with the upgrades they have brought for your spaceship!",
             waitForSpacebar: false
         }]);
 
@@ -1497,7 +1544,7 @@ class MainScene extends Phaser.Scene {
                     this.dialogue.startDialogue([{
                         character: 'stijn_spacesuit',
                         character2: 'james_spacesuit', // NEW: The second portrait!
-                        text: "WE HAVE STRONGER CANNONS AND A MORE POWERFUL BOOSTER FOR YOUR SPACESHIP! AND OF COURSE ARE WE HERE TO HELP!",
+                        text: "We have stronger cannons and a more powerful booster for your spaceship! And of course are we here to help!",
                         waitForSpacebar: false
                     }]);
 
@@ -1588,7 +1635,7 @@ class MainScene extends Phaser.Scene {
                     this.dialogue.startDialogue([{
                         character: 'stijn_spacesuit',
                         character2: 'james_spacesuit',
-                        text: "YES!! YOU DID IT! THE FINAL ROGUE AI BOSS HAS BEEN DEFEATED, TIME FOR US TO HEAD BACK TO EARTH!",
+                        text: "Yes!! You did it! The final rogue AI boss has been defeated, time for us to head back to Earth!",
                         waitForSpacebar: false
                     }]);
 
@@ -1637,8 +1684,8 @@ class MainScene extends Phaser.Scene {
             },
             onComplete: () => {
                 let victoryText = this.add.text(cam.centerX, cam.centerY, "MISSION ACCOMPLISHED", {
-                    fontFamily: 'Courier, monospace',
-                    fontSize: '32px',
+                    fontFamily: '"Press Start 2P", Courier, monospace',
+                    fontSize: '24px',
                     color: '#ffffff',
                     fontStyle: 'bold'
                 }).setOrigin(0.5).setDepth(201);
@@ -1675,16 +1722,16 @@ class MainScene extends Phaser.Scene {
 
         // "GAME OVER" Title
         let title = this.add.text(cam.centerX, cam.centerY - 100, "GAME OVER", {
-            fontFamily: 'Courier, monospace',
-            fontSize: '48px',
+            fontFamily: '"Press Start 2P", Courier, monospace',
+            fontSize: '32px',
             color: '#ff0000',
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
         // Display the Final Score
         let scoreText = this.add.text(cam.centerX, cam.centerY - 20, `FINAL SCORE: ${this.score}`, {
-            fontFamily: 'Courier, monospace',
-            fontSize: '24px',
+            fontFamily: '"Press Start 2P", Courier, monospace',
+            fontSize: '18px',
             color: '#ffffff'
         }).setOrigin(0.5);
 
@@ -1698,7 +1745,7 @@ class MainScene extends Phaser.Scene {
             let btnBg = this.add.rectangle(0, 0, 160, 45, 0x0088ff).setInteractive({ useHandCursor: true });
             btnBg.setStrokeStyle(2, 0xffffff);
 
-            let text = this.add.text(0, 0, label, { fontFamily: 'Courier', fontSize: '18px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+            let text = this.add.text(0, 0, label, { fontFamily: '"Press Start 2P", Courier', fontSize: '14px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
 
             container.add([btnBg, text]);
 
@@ -1778,11 +1825,22 @@ class MainScene extends Phaser.Scene {
                 isShooting = true;
             }
 
-            // --- TOUCH CONTROLS ---
+            // --- TOUCH CONTROLS (UPGRADED) ---
             this.input.manager.pointers.forEach(pointer => {
                 if (pointer.isDown) {
                     if (pointer.x < this.cameras.main.width / 2) {
+                        // Move smoothly towards the finger
                         this.physics.moveTo(this.player, pointer.x, pointer.y, this.playerSpeed);
+
+                        // Prevent the ship from violently jittering when it reaches the finger
+                        const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, pointer.x, pointer.y);
+                        if (distance < 15) {
+                            this.player.setVelocity(0);
+                        } else if (this.controlsReversed) {
+                            // Apply the virus effect to touch controls!
+                            this.player.body.velocity.x *= -1;
+                            this.player.body.velocity.y *= -1;
+                        }
                         isMoving = true;
                     }
                     if (pointer.x >= this.cameras.main.width / 2) {
@@ -1794,47 +1852,65 @@ class MainScene extends Phaser.Scene {
 
         // --- TUTORIAL PROGRESSION LOGIC ---
         if (this.tutorialState === 'movement') {
-            // Check WASD *OR* Arrow Keys, and turn the corresponding UI box green
-            if ((this.wasd.W.isDown || this.cursors.up.isDown) && !this.keysPressed.W) {
-                this.keysPressed.W = true;
-                this.visualKeys.W.setFillStyle(0x00ff00);
-            }
-            if ((this.wasd.A.isDown || this.cursors.left.isDown) && !this.keysPressed.A) {
-                this.keysPressed.A = true;
-                this.visualKeys.A.setFillStyle(0x00ff00);
-            }
-            if ((this.wasd.S.isDown || this.cursors.down.isDown) && !this.keysPressed.S) {
-                this.keysPressed.S = true;
-                this.visualKeys.S.setFillStyle(0x00ff00);
-            }
-            if ((this.wasd.D.isDown || this.cursors.right.isDown) && !this.keysPressed.D) {
-                this.keysPressed.D = true;
-                this.visualKeys.D.setFillStyle(0x00ff00);
-            }
+            if (this.isTouch) {
+                // Touch Progression
+                let touchingLeft = this.input.manager.pointers.some(p => p.isDown && p.x < this.cameras.main.width / 2);
+                if (touchingLeft && !this.keysPressed.W) {
+                    this.keysPressed.W = true; // Use W flag as a generic "moved" flag
+                    this.visualKeys.leftText.setColor('#00ff00'); // Turn green
 
-            // If all 4 directions are checked off, advance to the shooting phase!
-            if (this.keysPressed.W && this.keysPressed.A && this.keysPressed.S && this.keysPressed.D) {
-                this.tutorialState = 'shooting';
+                    this.time.delayedCall(1000, () => {
+                        this.tutorialState = 'shooting';
+                        this.visualKeys.rightText.setVisible(true);
+                        this.dialogue.startDialogue([{
+                            character: 'blonde_guy_comms',
+                            text: "Excellent maneuvering! Now tap or hold the right side to test the lasers!",
+                            waitForSpacebar: false
+                        }]);
+                    });
+                }
+            } else {
+                // Desktop Progression (Keep your existing WASD check here)
+                if ((this.wasd.W.isDown || this.cursors.up.isDown) && !this.keysPressed.W) { this.keysPressed.W = true; this.visualKeys.W.setFillStyle(0x00ff00); }
+                if ((this.wasd.A.isDown || this.cursors.left.isDown) && !this.keysPressed.A) { this.keysPressed.A = true; this.visualKeys.A.setFillStyle(0x00ff00); }
+                if ((this.wasd.S.isDown || this.cursors.down.isDown) && !this.keysPressed.S) { this.keysPressed.S = true; this.visualKeys.S.setFillStyle(0x00ff00); }
+                if ((this.wasd.D.isDown || this.cursors.right.isDown) && !this.keysPressed.D) { this.keysPressed.D = true; this.visualKeys.D.setFillStyle(0x00ff00); }
 
-                this.visualKeys.SPACE.setVisible(true);
-                this.tutorialUI.getAt(9).setVisible(true);
-
-                this.dialogue.startDialogue([{
-                    character: 'blonde_guy_comms',
-                    text: "EXCELLENT MANEUVERING! NOW PRESS SPACEBAR TO TEST THE LASER CANNONS!",
-                    waitForSpacebar: false
-                }]);
+                if (this.keysPressed.W && this.keysPressed.A && this.keysPressed.S && this.keysPressed.D) {
+                    this.tutorialState = 'shooting';
+                    this.visualKeys.SPACE.setVisible(true);
+                    this.tutorialUI.getAt(9).setVisible(true);
+                    this.dialogue.startDialogue([{
+                        character: 'blonde_guy_comms',
+                        text: "Excellent maneuvering! Now press spacebar to test the laser cannons!",
+                        waitForSpacebar: false
+                    }]);
+                }
             }
         } else if (this.tutorialState === 'shooting') {
-            if (this.spacebar.isDown) {
-                this.tutorialState = 'done';
-                this.visualKeys.SPACE.setFillStyle(0x00ff00);
+            if (this.isTouch) {
+                // Touch Progression
+                let touchingRight = this.input.manager.pointers.some(p => p.isDown && p.x >= this.cameras.main.width / 2);
+                if (touchingRight && !this.keysPressed.SPACE) {
+                    this.keysPressed.SPACE = true;
+                    this.tutorialState = 'done';
+                    this.visualKeys.rightText.setColor('#00ff00');
 
-                // Wait 1 second so they can see the green spacebar, then start the game!
-                this.time.delayedCall(3000, () => {
-                    this.tutorialUI.destroy(); // Remove the floating keys
-                    this.startCutscene();
-                });
+                    this.time.delayedCall(2000, () => {
+                        this.tutorialUI.destroy();
+                        this.startCutscene();
+                    });
+                }
+            } else {
+                // Desktop Progression (Keep your existing spacebar check here)
+                if (this.spacebar.isDown) {
+                    this.tutorialState = 'done';
+                    this.visualKeys.SPACE.setFillStyle(0x00ff00);
+                    this.time.delayedCall(2000, () => {
+                        this.tutorialUI.destroy();
+                        this.startCutscene();
+                    });
+                }
             }
         }
 
@@ -2039,7 +2115,7 @@ class PartyScene extends Phaser.Scene {
         this.time.delayedCall(2000, () => {
             this.dialogue.startDialogue([{
                 character: 'blonde_guy',
-                text: "AWESOME! THE ROGUE AI ROBOTS HAVE BEEN DEFEATED, THANK YOU FOR YOUR HELP!",
+                text: "Awesome! The rogue AI robots have been defeated, thank you for your help!",
                 waitForSpacebar: false
             }]);
 
@@ -2087,7 +2163,7 @@ class PartyScene extends Phaser.Scene {
         this.lbContainer = this.add.container(cam.centerX, cam.height + 300).setDepth(50);
 
         let bg = this.add.image(0, 0, 'leaderboard_bg');
-        let title = this.add.text(0, -120, "TOP PILOTS", { fontFamily: 'Courier', fontSize: '28px', color: '#00ffff', fontStyle: 'bold' }).setOrigin(0.5);
+        let title = this.add.text(0, -120, "TOP PILOTS", { fontFamily: '"Press Start 2P",Courier', fontSize: '20px', color: '#00ffff', fontStyle: 'bold' }).setOrigin(0.5);
 
         this.lbContainer.add([bg, title]);
 
@@ -2104,8 +2180,8 @@ class PartyScene extends Phaser.Scene {
             let rankText = `#${i + 1}  ${entry.name.padEnd(15, ' ')} ${entry.score.toString().padStart(6, '0')}`;
 
             let row = this.add.text(0, startY + (i * 30), rankText, {
-                fontFamily: 'Courier',
-                fontSize: '20px',
+                fontFamily: '"Press Start 2P", Courier',
+                fontSize: '16px',
                 color: textColor,
                 fontStyle: isCurrentPlayer ? 'bold' : 'normal'
             }).setOrigin(0.5);
@@ -2118,8 +2194,8 @@ class PartyScene extends Phaser.Scene {
 
         // Show the player's personal placement at the bottom
         let personalText = this.add.text(0, 110, `YOUR RANK: #${playerRank} | SCORE: ${this.finalScore}`, {
-            fontFamily: 'Courier',
-            fontSize: '18px',
+            fontFamily: '"Press Start 2P",Courier',
+            fontSize: '14px',
             color: '#ffaa00',
             fontStyle: 'bold'
         }).setOrigin(0.5);
@@ -2136,7 +2212,7 @@ class PartyScene extends Phaser.Scene {
                 this.time.delayedCall(2000, () => {
                     this.dialogue.startDialogue([{
                         character: 'blonde_guy',
-                        text: "THANK YOU FOR PLAYING!",
+                        text: "Thank you for playing!",
                         waitForSpacebar: false
                     }]);
 
@@ -2154,7 +2230,7 @@ class PartyScene extends Phaser.Scene {
         const createBtn = (x, label, callback) => {
             let container = this.add.container(x, btnY).setDepth(50).setAlpha(0); // Start hidden
             let bg = this.add.image(0, 0, 'btn_bg').setInteractive({ useHandCursor: true });
-            let text = this.add.text(0, 0, label, { fontFamily: 'Courier', fontSize: '16px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
+            let text = this.add.text(0, 0, label, { fontFamily: '"Press Start 2P", Courier', fontSize: '16px', color: '#ffffff', fontStyle: 'bold' }).setOrigin(0.5);
 
             container.add([bg, text]);
 
@@ -2201,8 +2277,8 @@ class PartyScene extends Phaser.Scene {
 const config = {
     type: Phaser.AUTO,
     parent: 'game-container',
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#1a1a2e',
     scale: {
         mode: Phaser.Scale.RESIZE,

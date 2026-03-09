@@ -9,9 +9,58 @@ body {
     overflow: hidden;
 }
 
+body {
+    margin: 0;
+    background-color: #05000a;
+    /* An extra dark space color for the margins */
+    overflow: hidden;
+    /* Prevents scrollbars from appearing */
+}
+
+#start-screen,
+#name-input-screen,
 #game-container {
-    width: 100vw;
-    height: 100vh;
+    position: absolute;
+    top: 16px;
+    /* 16px margin from the top */
+    height: calc(100% - 32px);
+    /* Leaves exactly 16px margin at the bottom */
+
+    width: calc(100% - 32px);
+    /* 16px margin on the left/right on smaller screens */
+    max-width: 1200px;
+    /* Caps the width at 1200px on large monitors! */
+
+    left: 50%;
+    /* These two lines keep everything dead center */
+    transform: translateX(-50%);
+
+    border-radius: 8px;
+    /* Optional: Rounds the corners slightly for a polished look */
+    overflow: hidden;
+}
+
+#start-screen {
+    background-color: #0b001a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    font-family: 'Press Start 2P', monospace;
+    color: white;
+    text-align: center;
+}
+
+#name-input-screen {
+    background-color: rgba(0, 0, 0, 0.85);
+    /* Dark semi-transparent background */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 500;
+}
+
+#game-container {
     display: flex;
     justify-content: center;
     align-items: center;

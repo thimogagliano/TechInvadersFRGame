@@ -5,25 +5,6 @@
 <style>
     /* ... (Keep your existing body and game-container CSS) ... */
 
-    #start-screen {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: #0b001a;
-        /* Dark purple space background */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        /* Keeps it on top of the game canvas */
-        font-family: 'Press Start 2P', monospace;
-        /* Retro pixel font */
-        color: white;
-        text-align: center;
-    }
-
     .brand {
         font-size: 12px;
         margin-bottom: 20px;
@@ -69,23 +50,6 @@
         transform: scale(1.05);
     }
 
-    /* Styles for name input screen */
-
-    #name-input-screen {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.7);
-        /* Dark semi-transparent background */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 500;
-        /* Above game, below start menu */
-    }
-
     .input-modal {
         background-color: #2a2a2a;
         padding: 40px;
@@ -120,6 +84,24 @@
 
     #submit-name-button:hover {
         background-color: #00ee77;
+    }
+
+    /* --- NEW: MOBILE SAFE ZONES --- */
+    /* This rule only activates on screens smaller than 768px wide (phones and small tablets) */
+    @media (max-width: 768px) {
+
+        #start-screen,
+        #name-input-screen,
+        #game-container {
+            top: 100px !important;
+            /* Forces the interface down 100px from the top */
+
+            /* 100px top margin + 150px bottom margin = 250px total space removed */
+            height: calc(100% - 250px) !important;
+
+            width: calc(100% - 32px) !important;
+            /* Maintains the 16px side margins */
+        }
     }
 </style>
 
