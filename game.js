@@ -32,98 +32,132 @@ class DialogueManager {
         this.typewriterTimer = null;
         this.onComplete = null;
 
-        // --- PORTRAIT DICTIONARY ---
-        this.portraits = {
-            'blonde_guy': 0xffcc00,
-            'blonde_guy_comms': 0xff9900,
-            'green_hoodie': 0x00ff00,
-            'james_spacesuit': 0x00ffff,
-            'stijn': 0xff55aa,
-            'stijn_spacesuit': 0xaa00ff,
-            'default': 0x4488ff
-        };
-
         // --- BUILD THE UI ---
         this.uiContainer = this.scene.add.container(0, 0).setDepth(1000);
         this.uiContainer.setVisible(false);
 
-        this.dialogBox = this.scene.add.rectangle(0, 0, 100, 100, 0xffffff);
-        this.dialogBox.setOrigin(0, 0);
-        this.dialogBox.setStrokeStyle(4, 0x000000);
+        this.bubbleGraphics = this.scene.add.graphics();
 
-        this.portrait = this.scene.add.rectangle(0, 0, 80, 80, this.portraits['default']);
-        this.portraitSecondary = this.scene.add.rectangle(0, 0, 80, 80, 0x4488ff).setOrigin(0, 0).setStrokeStyle(2, 0x000000);
+        // --- 1. FIX: ANCHOR THE PORTRAITS TO THE BOTTOM ---
+        // setOrigin(0, 1) anchors it to the Bottom-Left corner
+        this.portrait = this.scene.add.image(0, 0, 'blonde_guy').setOrigin(0, 1);
+
+        // setOrigin(1, 1) anchors it to the Bottom-Right corner
+        this.portraitSecondary = this.scene.add.image(0, 0, 'blonde_guy').setOrigin(1, 1);
         this.portraitSecondary.setVisible(false);
-        this.portrait.setOrigin(0, 0);
-        this.portrait.setStrokeStyle(2, 0x000000);
 
-        // --- MAIN DIALOGUE TEXT ---
+        // Text setup
         this.dialogText = this.scene.add.text(0, 0, "", {
-            fontFamily: '"Press Start 2P", Courier, monospace', // <-- Changed to your pixel font!
-            fontSize: '12px', // Slightly smaller base size since pixel fonts are very wide
+            fontFamily: '"Press Start 2P", Courier, monospace',
+            fontSize: '12px',
             color: '#000000',
-            lineSpacing: 8 // Adds a little breathing room between lines of text
+            lineSpacing: 8
         });
 
-        // --- NEW: THE HINT TEXT ---
         this.hintText = this.scene.add.text(0, 0, "", {
-            fontFamily: '"Press Start 2P", Courier, monospace', // <-- Changed here too!
+            fontFamily: '"Press Start 2P", Courier, monospace',
             fontSize: '8px',
             color: '#555555'
-        }).setOrigin(1, 1); // Anchors exactly to the bottom right
+        }).setOrigin(1, 1);
 
-        this.uiContainer.add([this.dialogBox, this.portrait, this.portraitSecondary, this.dialogText, this.hintText]);
+        this.uiContainer.add([this.bubbleGraphics, this.portrait, this.portraitSecondary, this.dialogText, this.hintText]);
 
-        // --- SETUP INPUT (SPACEBAR) ---
+        // Input
         this.spacebar = this.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         this.spacebar.on('down', () => this.handleInput());
-
-        // NEW: Tap anywhere on the screen to advance!
         this.scene.input.on('pointerdown', () => this.handleInput());
     }
 
     resize(cam) {
-        const boxHeight = cam.height * 0.15;
-        const boxWidth = cam.width * 0.90;
-        const marginX = (cam.width - boxWidth) / 2;
-        const marginY = cam.height - boxHeight - (cam.height * 0.02);
-
-        this.dialogBox.setPosition(marginX, marginY);
-        this.dialogBox.setSize(boxWidth, boxHeight);
-
-        // --- NEW: MOBILE SCALING LOGIC ---
-        // If the screen is narrow (like a phone), shrink the portraits to make room for text
         const isMobile = cam.width < 600;
-        const portraitScale = isMobile ? 0.6 : 0.75;
 
-        const portraitSize = boxHeight * portraitScale;
-        const portraitX = marginX + (boxHeight * 0.125);
+        // Save margins and box heights for when we draw the bubble
+        this.marginX = cam.width * 0.05;
+        this.marginY = cam.height * 0.02;
+        this.boxHeight = cam.height * 0.15;
 
-        // Center the portrait vertically inside the box
-        const portraitY = marginY + ((boxHeight - portraitSize) / 2);
+        // --- 2. FIX: LOCK PORTRAIT HEIGHT ---
+        // We ensure the image is just slightly taller than the dialogue box itself (1.1x)
+        this.targetPortraitHeight = this.boxHeight * 1.1;
 
-        this.portrait.setPosition(portraitX, portraitY);
-        this.portrait.setSize(portraitSize, portraitSize);
-
-        const rightPortraitX = marginX + boxWidth - portraitSize - (boxHeight * 0.125);
-        this.portraitSecondary.setPosition(rightPortraitX, portraitY);
-        this.portraitSecondary.setSize(portraitSize, portraitSize);
-
-        const textX = portraitX + portraitSize + 15;
-        const textY = marginY + 15;
-        this.dialogText.setPosition(textX, textY);
-
-        this.hintText.setPosition(marginX + boxWidth - 15, marginY + boxHeight - 10);
-
-        // --- NEW: STRICT FONT SIZING ---
-        // Pixel fonts look terrible if scaled smoothly. Lock them to exact sizes!
-        const dynamicFontSize = isMobile ? 8 : 12; // 8px on phones, 12px on desktop
-
+        const dynamicFontSize = isMobile ? 8 : 12;
         this.dialogText.setFontSize(dynamicFontSize + 'px');
-        this.dialogText.setLineSpacing(isMobile ? 4 : 8); // Tighter line spacing on mobile
-
-        // Make the hint text slightly smaller, but readable
+        this.dialogText.setLineSpacing(isMobile ? 4 : 8);
         this.hintText.setFontSize((dynamicFontSize - 2) + 'px');
+
+        // If a message is currently open, dynamically redraw it to match the new size
+        if (this.currentMessage) {
+            this.layoutDynamicUI();
+            this.drawBubble(this.currentBoxWidth);
+        }
+    }
+
+    // --- NEW: A helper function that dynamically calculates layout based on current art ---
+    layoutDynamicUI() {
+        const cam = this.scene.cameras.main;
+        const gap = 20;
+
+        // --- LEFT PORTRAIT ---
+        if (this.currentMessage.character) {
+            this.portrait.setTexture(this.currentMessage.character);
+
+            // Proportional Scaling: Set the height, and let the width auto-adjust!
+            this.portrait.displayHeight = this.targetPortraitHeight;
+            this.portrait.scaleX = this.portrait.scaleY;
+
+            this.portrait.setPosition(this.marginX, cam.height - this.marginY);
+        }
+
+        // --- SPEECH BUBBLE STARTING POINT ---
+        // Pushes the box precisely next to however wide your custom art is
+        this.boxX = this.marginX + this.portrait.displayWidth + gap;
+        this.boxY = cam.height - this.boxHeight - this.marginY;
+
+        // --- RIGHT PORTRAIT ---
+        if (this.currentMessage.character2) {
+            this.portraitSecondary.setTexture(this.currentMessage.character2);
+            this.portraitSecondary.setVisible(true);
+
+            this.portraitSecondary.displayHeight = this.targetPortraitHeight;
+            this.portraitSecondary.scaleX = this.portraitSecondary.scaleY;
+            this.portraitSecondary.setPosition(cam.width - this.marginX, cam.height - this.marginY);
+
+            this.currentBoxWidth = (cam.width - this.marginX - this.portraitSecondary.displayWidth - gap) - this.boxX;
+        } else {
+            this.portraitSecondary.setVisible(false);
+            this.currentBoxWidth = cam.width - this.marginX - this.boxX;
+        }
+
+        // Update Text Positions
+        this.dialogText.setPosition(this.boxX + 20, this.boxY + 20);
+        this.dialogText.setWordWrapWidth(this.currentBoxWidth - 40, true);
+        this.hintText.setPosition(this.boxX + this.currentBoxWidth - 15, this.boxY + this.boxHeight - 10);
+    }
+
+    drawBubble(width) {
+        this.bubbleGraphics.clear();
+        this.bubbleGraphics.lineStyle(4, 0x000000, 1);
+        this.bubbleGraphics.fillStyle(0xffffff, 1);
+
+        const tailTipX = this.boxX - 25;
+        const tailTipY = this.boxY + this.boxHeight - 20;
+        const tailTopY = this.boxY + this.boxHeight - 50;
+        const tailBottomY = this.boxY + this.boxHeight - 18;
+
+        // Triangle tail
+        this.bubbleGraphics.fillTriangle(this.boxX, tailTopY, tailTipX, tailTipY, this.boxX, tailBottomY);
+        this.bubbleGraphics.strokeTriangle(this.boxX, tailTopY, tailTipX, tailTipY, this.boxX, tailBottomY);
+
+        // Rounded Box
+        this.bubbleGraphics.fillRoundedRect(this.boxX, this.boxY, width, this.boxHeight, 8);
+        this.bubbleGraphics.strokeRoundedRect(this.boxX, this.boxY, width, this.boxHeight, 8);
+
+        // Seam hiding trick
+        this.bubbleGraphics.lineStyle(6, 0xffffff, 1);
+        this.bubbleGraphics.beginPath();
+        this.bubbleGraphics.moveTo(this.boxX, tailTopY + 2);
+        this.bubbleGraphics.lineTo(this.boxX, tailBottomY - 2);
+        this.bubbleGraphics.strokePath();
     }
 
     startDialogue(messages, onComplete) {
@@ -148,44 +182,24 @@ class DialogueManager {
             return;
         }
 
-        let message = this.queue[this.currentIndex];
-        if (!message) {
-            this.currentIndex++;
-            return this.showNextMessage();
-        }
+        this.currentMessage = this.queue[this.currentIndex];
 
-        this.currentMessage = message;
+        // 1. Calculate dynamic layout based on current artwork
+        this.layoutDynamicUI();
 
-        if (this.portraits[message.character]) this.portrait.setFillStyle(this.portraits[message.character]);
+        // 2. Draw the visual box
+        this.drawBubble(this.currentBoxWidth);
 
-        // 5. Portrait 2 (Right) & Advanced Word Wrap
-        if (message.character2) {
-            if (this.portraits[message.character2]) {
-                this.portraitSecondary.setFillStyle(this.portraits[message.character2]);
-            }
-            this.portraitSecondary.setVisible(true);
-
-            let doubleWrapWidth = this.dialogBox.width - (this.portrait.width * 2) - 60;
-            // The 'true' at the end enables advanced word wrapping!
-            this.dialogText.setWordWrapWidth(doubleWrapWidth, true);
-        } else {
-            this.portraitSecondary.setVisible(false);
-
-            let singleWrapWidth = this.dialogBox.width - this.portrait.width - 40;
-            // The 'true' at the end enables advanced word wrapping!
-            this.dialogText.setWordWrapWidth(singleWrapWidth, true);
-        }
-
+        // 3. Setup the text
         this.dialogText.setText('');
         this.isTyping = true;
         let charIndex = 0;
 
-        // --- NEW: Setup the Hint Text for typing ---
         if (this.allowSkip) {
             this.hintText.setText("tap / space to skip");
             this.hintText.setVisible(true);
         } else {
-            this.hintText.setVisible(false); // Hide until typing finishes
+            this.hintText.setVisible(false);
         }
 
         if (this.typewriterTimer) this.typewriterTimer.remove();
@@ -193,24 +207,22 @@ class DialogueManager {
         this.typewriterTimer = this.scene.time.addEvent({
             delay: 30,
             callback: () => {
-                this.dialogText.text += message.text[charIndex];
+                this.dialogText.text += this.currentMessage.text[charIndex];
                 charIndex++;
-                if (charIndex >= message.text.length) {
+                if (charIndex >= this.currentMessage.text.length) {
                     this.isTyping = false;
                     this.typewriterTimer.remove();
 
-                    // --- NEW: Update hint text when typing finishes naturally ---
-                    if (message.waitForSpacebar) {
+                    if (this.currentMessage.waitForSpacebar) {
                         this.hintText.setText("tap / space to continue");
                         this.hintText.setVisible(true);
                     } else {
-                        // Mid-combat comms shouldn't ask for a spacebar!
                         this.hintText.setVisible(false);
                     }
                 }
             },
             callbackScope: this,
-            repeat: message.text.length - 1
+            repeat: this.currentMessage.text.length - 1
         });
 
         this.currentIndex++;
@@ -225,7 +237,6 @@ class DialogueManager {
             this.dialogText.setText(this.currentMessage.text);
             this.isTyping = false;
 
-            // --- NEW: Update hint text when player forcefully skips ---
             if (this.currentMessage.waitForSpacebar) {
                 this.hintText.setText("press spacebar to continue");
                 this.hintText.setVisible(true);
@@ -254,26 +265,28 @@ class OfficeScene extends Phaser.Scene {
     }
 
     // TODO: When you have your real images, uncomment this block to load them:
-    /*
+
     preload() {
-        this.load.image('office_normal', 'assets/office_normal.png');
-        this.load.image('office_red', 'assets/office_red.png');
+        this.load.image('Future Ready Headquarters', 'assets/FrHq.png');
+        this.load.image('Future Ready Headquarters Alarm', 'assets/FrHqAlarm.png');
+
+        this.load.image('Robbin', 'assets/Robbin.png');
+        this.load.image('Robbin_comms', 'assets/Robbin_comms.png'); // Maybe a holographic version?
+        this.load.image('James', 'assets/James.png');
+        this.load.image('James_spacesuit', 'assets/James_spacesuit.png');
+        this.load.image('Stijn', 'assets/Stijn.png');
+        this.load.image('Stijn_spacesuit', 'assets/Stijn_spacesuit.png');
     }
-    */
+
 
     create() {
         this.input.keyboard.clearCaptures();
-        // --- PLACEHOLDER GENERATOR (Remove when using real images) ---
-        let gfx = this.make.graphics({ x: 0, y: 0, add: false });
-        gfx.fillStyle(0x4a4f5c, 1).fillRect(0, 0, 800, 600).generateTexture('office_normal', 800, 600);
-        gfx.fillStyle(0x880000, 1).fillRect(0, 0, 800, 600).generateTexture('office_red', 800, 600);
-        gfx.destroy();
 
         // 1. Setup the Normal Office Background
-        this.bgNormal = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'office_normal').setDepth(-2);
+        this.bgNormal = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'Future Ready Headquarters').setDepth(-2);
 
         // 2. Setup the Red Alert Background (Hidden initially)
-        this.bgRed = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'office_red').setDepth(-1);
+        this.bgRed = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'Future Ready Headquarters Alarm').setDepth(-1);
         this.bgRed.setVisible(false);
 
         // Scale both to perfectly cover the screen
@@ -318,17 +331,17 @@ class OfficeScene extends Phaser.Scene {
         // Queue the intro dialogue
         this.dialogue.startDialogue([
             {
-                character: 'blonde_guy',
+                character: 'Robbin',
                 text: "Welcome to Future Ready HQ! Here we are working on the technology of the future!",
                 waitForSpacebar: true
             },
             {
-                character: 'blonde_guy',
+                character: 'Robbin',
                 text: "We have been waiting for you, our team needs your help...",
                 waitForSpacebar: true
             },
             {
-                character: 'blonde_guy',
+                character: 'Robbin',
                 text: "But first we need to know your name or how you want to be named so we can easily call when we need you.",
                 waitForSpacebar: true
             }
@@ -358,7 +371,7 @@ class OfficeScene extends Phaser.Scene {
         inputField.focus();
 
         this.dialogue.startDialogue([{
-            character: 'blonde_guy',
+            character: 'Robbin',
             text: "You can type your name in the field we have made!",
             waitForSpacebar: false
         }]);
@@ -452,8 +465,8 @@ class OfficeScene extends Phaser.Scene {
         strobeEffect(); // Start the flashing
 
         this.dialogue.startDialogue([
-            { character: 'blonde_guy', text: "Oh no! We have very bad news! Rogue AI robots are about to attack the Earth!", waitForSpacebar: true },
-            { character: 'blonde_guy', text: "It's good that you have arrived, we have built a spaceship that needs testing! Quick, hop in!!", waitForSpacebar: true }
+            { character: 'Robbin', text: "Oh no! We have very bad news! Rogue AI robots are about to attack the Earth!", waitForSpacebar: true },
+            { character: 'Robbin', text: "It's good that you have arrived, we have built a spaceship that needs testing! Quick, hop in!!", waitForSpacebar: true }
         ], () => {
             // DIAGNOSTIC TOOL: Print all available scenes to the console
             console.log("Phaser loaded these scenes:", this.scene.manager.keys);
@@ -515,18 +528,53 @@ class MainScene extends Phaser.Scene {
         this.bossHealth = 50;
         this.bossShootTimer = null;
 
+        // NEW: Track if the ship has been upgraded yet!
+        this.isShipUpgraded = false;
+
         // Phase 2 Boss Variables
         this.phase2Triggered = false;
         this.bossShielded = false;
         this.hasDoubleLaser = false;
     }
 
-    // TODO: When you have your real space background, uncomment this:
-    /*
     preload() {
-        this.load.image('space_bg', 'assets/space_background.png');
+        // Load your real cutscene images!
+        this.load.image('Future Ready launch platform', 'assets/FrLaunchPlatform.png');
+        this.load.spritesheet('Launching Spritesheet', 'assets/SpritesheetLaunch.png', {
+            frameWidth: 1500,
+            frameHeight: 1120
+        });
+
+        // --- NEW: THE UI HEART ---
+        this.load.image('heart', 'assets/heart.png');
+
+        this.load.image('Space background', 'assets/SpaceBg.png');
+        // --- NEW: MAIN ACTORS ---
+        this.load.image('Player ship', 'assets/SchipSpeler.png'); // Your starting ship
+        this.load.image('player ship upgraded', 'assets/SchipSpelerUpgraded.png'); // Phase 2 upgraded ship
+        this.load.image('player ship boost', 'assets/SchipSpelerBooster.png');
+        this.load.image('player ship upgraded boost', 'assets/SchipSpelerUpgradedBooster.png');
+        this.load.image('Helper ship blue', 'assets/HelperShipBlue.png');
+        this.load.image('Helper ship purple', 'assets/HelperShipPurple.png');
+
+
+        this.load.image('EnemyRobot', 'assets/EnemyRobot.png'); // The Phase 1/2 robots
+        this.load.image('boss', 'assets/boss.png');
+        // --- NEW: THE AD POPUPS ---
+
+        this.load.image('ad_1', 'assets/NumberOneAppsAd.png');
+        this.load.image('ad_2', 'assets/limitedEditionAd.png');
+        this.load.image('ad_3', 'assets/BestWebsitesAd.png');
+
+        this.load.image('adblocker_icon', 'assets/adblocker_icon.png');
+
+        this.load.image('Robbin', 'assets/Robbin.png');
+        this.load.image('Robbin_comms', 'assets/Robbin_comms.png'); // Maybe a holographic version?
+        this.load.image('James', 'assets/James.png');
+        this.load.image('James_spacesuit', 'assets/James_spacesuit.png');
+        this.load.image('Stijn', 'assets/Stijn.png');
+        this.load.image('Stijn_spacesuit', 'assets/Stijn_spacesuit.png');
     }
-    */
 
     create() {
         // --- 1. RESET KEYBOARD AND BROWSER FOCUS ---
@@ -534,50 +582,21 @@ class MainScene extends Phaser.Scene {
         window.focus(); // Force the browser to pay attention to the game canvas!
 
         // --- BOMB-PROOF PARALLAX BACKGROUND ---
-        // Create a massive container (3000x3000) so it never shows edges when shifting
-        this.spaceBg = this.add.container(this.cameras.main.centerX, this.cameras.main.centerY).setDepth(-10);
+        // 1. Add your real space background directly (no container needed!)
+        this.spaceBg = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'Space background').setDepth(-10);
 
-        // 1. Add the dark blue space void
-        let darkSpace = this.add.rectangle(0, 0, 3000, 3000, 0x0a0a2a);
-        this.spaceBg.add(darkSpace);
-
-        // 2. Add 150 randomly placed white stars into the container
-        for (let i = 0; i < 150; i++) {
-            let starX = Phaser.Math.Between(-1500, 1500);
-            let starY = Phaser.Math.Between(-1500, 1500);
-            let star = this.add.rectangle(starX, starY, 2, 2, 0xffffff);
-            this.spaceBg.add(star);
-        }
-
-        // // Handle resizing dynamically
-        // this.scale.on('resize', () => {
-        //     this.scaleBackgroundToCover(this.spaceBg, 1.1);
-        // }, this);
+        // 2. Scale it to perfectly cover the screen, plus an extra 10% (1.1) 
+        // to hide the borders when the parallax shifts it!
+        this.scaleBackgroundToCover(this.spaceBg, 1.1);
 
         // NEW LINE: Create the graphics tool so we can draw the placeholders!
         let gfx = this.make.graphics({ x: 0, y: 0, add: false });
-
-        // NEW: Cutscene placeholders (Dark gray and lighter gray)
-        gfx.fillStyle(0x333333, 1).fillRect(0, 0, 800, 600).generateTexture('cutscene_1', 800, 600);
-        gfx.fillStyle(0x555555, 1).fillRect(0, 0, 800, 600).generateTexture('cutscene_2', 800, 600);
-
-        // Player Ship (Green Triangle)
-        gfx.fillStyle(0x00ff00, 1);
-        gfx.fillTriangle(16, 0, 0, 32, 32, 32);
-        gfx.generateTexture('playerShip', 32, 32);
-        gfx.clear();
 
         // Laser (Yellow Rectangle)
         gfx.fillStyle(0xffff00, 1);
         gfx.fillRect(0, 0, 4, 16);
         gfx.generateTexture('laser', 4, 16);
         gfx.clear();
-
-        // Enemy Robot (Red Square)
-        gfx.fillStyle(0xff0000, 1);
-        gfx.fillRect(0, 0, 32, 32);
-        gfx.generateTexture('enemyRobot', 32, 32);
-        gfx.clear(); // CHANGED: Changed from destroy() to clear() so we can keep drawing!
 
         // NEW: Antivirus Rounded Square (Green Transparent)
         gfx.fillStyle(0x00ff00, 0.3); // 30% opacity green
@@ -599,55 +618,10 @@ class MainScene extends Phaser.Scene {
         gfx.fillPath();
         gfx.generateTexture('shield_icon', 12, 14);
 
-        // 6. Ad Pop-up (A white box with a red header to look like a window)
-        gfx.fillStyle(0xffffff, 1);
-        gfx.fillRect(0, 0, 200, 150); // Main white body
-        gfx.fillStyle(0xff0000, 1);
-        gfx.fillRect(0, 0, 200, 25);  // Red header bar
-        gfx.lineStyle(2, 0x000000, 1);
-        gfx.strokeRect(0, 0, 200, 150); // Black border
-        gfx.generateTexture('ad_popup', 200, 150);
-        gfx.clear();
-
-        // 7. Adblocker Icon (Red rounded square with a diagonal white stripe)
-        gfx.fillStyle(0xff0000, 1);
-        gfx.fillRoundedRect(0, 0, 40, 40, 8);
-        gfx.lineStyle(4, 0xffffff, 1);
-        gfx.beginPath();
-        gfx.moveTo(8, 8);    // Top left of stripe
-        gfx.lineTo(32, 32);  // Bottom right of stripe
-        gfx.strokePath();
-        gfx.generateTexture('adblocker_icon', 40, 40);
-
-        // 8. Boss Placeholder (Massive Red/Purple Ship)
-        gfx.fillStyle(0x880044, 1);
-        gfx.fillRect(0, 0, 200, 150); // Big rectangular block
-        gfx.fillStyle(0xffaa00, 1);
-        gfx.fillCircle(100, 75, 40); // Yellow core in the middle
-        gfx.generateTexture('boss_placeholder', 200, 150);
-        gfx.clear();
-
         // 9. Boss Laser (Orange/Red oval)
         gfx.fillStyle(0xff5500, 1);
         gfx.fillRoundedRect(0, 0, 8, 24, 4);
         gfx.generateTexture('boss_laser', 8, 24);
-
-        // 10. Upgraded Player Ship (Slightly larger, cyan accents)
-        gfx.fillStyle(0x00ffaa, 1);
-        gfx.fillTriangle(20, 0, 0, 40, 40, 40);
-        gfx.generateTexture('playerShipUpgraded', 40, 40);
-        gfx.clear();
-
-        // 11. Helper Ship Blue (James)
-        gfx.fillStyle(0x0088ff, 1);
-        gfx.fillTriangle(16, 0, 0, 32, 32, 32);
-        gfx.generateTexture('helperBlue', 32, 32);
-        gfx.clear();
-
-        // 12. Helper Ship Purple (Stijn)
-        gfx.fillStyle(0xaa00ff, 1);
-        gfx.fillTriangle(16, 0, 0, 32, 32, 32);
-        gfx.generateTexture('helperPurple', 32, 32);
 
         // 13. Boss Explosion Frame 1 (Cracked)
         gfx.fillStyle(0x880044, 1);
@@ -695,15 +669,27 @@ class MainScene extends Phaser.Scene {
             });
         }
 
+        // --- NEW: CUTSCENE 2 ANIMATION ---
+        if (!this.anims.exists('Launching Spritesheet')) {
+            this.anims.create({
+                key: 'Launching Spritesheet',
+                // Change "end: 5" to the number of frames your animation has minus 1. 
+                // (e.g., if you have 6 frames, start is 0 and end is 5)
+                frames: this.anims.generateFrameNumbers('Launching Spritesheet', { start: 0, end: 9 }),
+                frameRate: 5, // How fast it plays (10 frames per second is a good start)
+                repeat: 0     // -1 tells it to loop forever!
+            });
+        }
+
         // --- CUTSCENE OVERLAY ---
-        // Sits at depth 90 (hiding the gameplay, but behind the depth 100 UI)
-        this.cutsceneBg = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'cutscene_1').setDepth(90);
+        // CHANGED: add.image is now add.sprite so it can play animations!
+        this.cutsceneBg = this.add.sprite(this.cameras.main.centerX, this.cameras.main.centerY, 'Future Ready launch platform').setDepth(90);
         this.cutsceneBg.setVisible(false);
 
         // 1. Setup Player 
         const centerX = this.cameras.main.centerX;
         const startY = this.cameras.main.height - 100;
-        this.player = this.physics.add.sprite(centerX, startY, 'playerShip');
+        this.player = this.physics.add.sprite(centerX, startY, 'Player ship');
         this.player.setCollideWorldBounds(true);
 
         // 2. Setup Physics Groups
@@ -757,11 +743,13 @@ class MainScene extends Phaser.Scene {
         });
         this.scoreText.setOrigin(0.5, 0.5); // Center completely
 
-        // 4. Health Hearts (Right) - Using 3 red squares as placeholders
+        // 4. Health Hearts (Right) - Using real heart images!
         this.hearts = [];
         for (let i = 0; i < 3; i++) {
-            let heart = this.add.rectangle(0, 0, 20, 20, 0xff0000);
-            heart.setOrigin(1, 0.5); // Right aligned
+            // CHANGED: add.rectangle is now add.image, using your loaded 'heart' key!
+            let heart = this.add.image(0, 0, 'heart');
+
+            heart.setOrigin(1, 0.5); // Keep the right alignment so it anchors perfectly
             this.hearts.push(heart);
         }
 
@@ -829,7 +817,7 @@ class MainScene extends Phaser.Scene {
         let randomX = Phaser.Math.Between(32, this.cameras.main.width - 32);
 
         // Create an enemy just above the top of the screen
-        let enemy = this.enemies.create(randomX, -32, 'enemyRobot');
+        let enemy = this.enemies.create(randomX, -32, 'EnemyRobot');
 
         if (enemy) {
             enemy.setVelocityY(100); // Move downwards slowly
@@ -899,6 +887,15 @@ class MainScene extends Phaser.Scene {
     resizeUI() {
         const cam = this.cameras.main;
 
+        // Force the physics world to resize so the ship doesn't hit an invisible wall!
+        this.physics.world.setBounds(0, 0, cam.width, cam.height);
+
+        // --- NEW: RESIZE THE SPACE BACKGROUND ---
+        // Keep the 10% parallax padding accurate even if they rotate their phone!
+        if (this.spaceBg) {
+            this.scaleBackgroundToCover(this.spaceBg, 1.1);
+        }
+
         // NEW: Check if the screen is narrow (mobile)
         const isMobile = cam.width < 600;
 
@@ -917,14 +914,14 @@ class MainScene extends Phaser.Scene {
         this.playerNameText.setPosition(cam.width * 0.02, topBarHeight / 2);
 
         // --- SCALE THE HEALTH HEARTS ---
-        const heartSize = isMobile ? 12 : 20;
-        const heartSpacing = heartSize * 1.5;
+        const heartSize = isMobile ? 18 : 28;
+        const heartSpacing = heartSize * 1.2;
         let startX = cam.width - (cam.width * 0.02); // 2% padding from the right edge
 
         let lastHeartLeftEdge = startX; // We will use this to track where to put the score!
 
         for (let i = 0; i < this.hearts.length; i++) {
-            this.hearts[i].setSize(heartSize, heartSize);
+            this.hearts[i].setDisplaySize(heartSize, heartSize);
             let heartX = startX - (i * heartSpacing);
             this.hearts[i].setPosition(heartX, topBarHeight / 2);
 
@@ -959,13 +956,13 @@ class MainScene extends Phaser.Scene {
         // Check if we are on a mobile device and give the right instructions
         if (this.isTouch) {
             this.dialogue.startDialogue([{
-                character: 'blonde_guy_comms',
+                character: 'Robbin_comms',
                 text: "Drag your finger on the left side of the screen to steer!",
                 waitForSpacebar: false
             }]);
         } else {
             this.dialogue.startDialogue([{
-                character: 'blonde_guy_comms',
+                character: 'Robbin_comms',
                 text: "Can you hear me?... Good! Let's test the thrusters. Use W, A, S, D or the arrow keys to move around!",
                 waitForSpacebar: false
             }]);
@@ -1010,30 +1007,33 @@ class MainScene extends Phaser.Scene {
 
     startCutscene() {
         // 1. Show the first cutscene background
-        this.cutsceneBg.setTexture('cutscene_1');
+        this.cutsceneBg.setTexture('Future Ready launch platform');
         this.scaleBackgroundToCover(this.cutsceneBg);
         this.cutsceneBg.setVisible(true);
 
         // 2. Play the first part of the cutscene
         this.dialogue.startDialogue([{
-            character: 'blonde_guy',
+            character: 'Robbin_comms',
             text: "Fantastic! Everything works and phase 1 is completed. We have built the spaceship and launched it successfully!",
             waitForSpacebar: true
         }], () => {
 
             // 3. This runs when they press spacebar on the first text. 
-            // Swap to the second background!
-            this.cutsceneBg.setTexture('cutscene_2');
+            // NEW: Tell the sprite to play the animation!
+            this.cutsceneBg.play('Launching Spritesheet');
+
+            // Recalculate the scale just in case the animation frames are a different size
+            this.scaleBackgroundToCover(this.cutsceneBg);
 
             // Trigger the second part of the dialogue
             this.dialogue.startDialogue([{
-                character: 'blonde_guy',
-                text: "We are detecting incoming rogue AI robots. Defeat as many as you can!", // Note: Replace this with your actual Phase 2 text!
+                character: 'Robbin_comms',
+                text: "We are detecting incoming rogue AI robots. Prepare for combat!",
                 waitForSpacebar: true
             }], () => {
 
                 // 4. This runs when they press spacebar on the final text.
-                // Hide the cutscene, reveal space, and start the game!
+                this.cutsceneBg.stop(); // NEW: Stop the animation to save memory!
                 this.cutsceneBg.setVisible(false);
                 this.startGameplay();
 
@@ -1054,14 +1054,14 @@ class MainScene extends Phaser.Scene {
 
         // Give a final Good Luck message that the player can dismiss
         this.dialogue.startDialogue([{
-            character: 'blonde_guy_comms',
-            text: "Systems are green! Here come the rogue robots. Protect Earth!!",
+            character: 'Robbin_comms',
+            text: "Systems are green! Here come the rogue robots. Defeat as many robots as you can!!",
             waitForSpacebar: true
         }]);
 
         // 3. Auto-close the text balloon after 8 seconds so it clears their screen
         this.time.delayedCall(8000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
         });
@@ -1101,14 +1101,14 @@ class MainScene extends Phaser.Scene {
 
         // 2. Show the Green Hoodie Guy dialogue
         this.dialogue.startDialogue([{
-            character: 'green_hoodie', // Matches your DialogueManager portrait key
+            character: 'James', // Matches your DialogueManager portrait key
             text: "We have developed a firewall for you to help with the damage from the robots!",
             waitForSpacebar: false // False so they don't have to stop playing to read it
         }]);
 
         // 3. Auto-close the text balloon after 10 seconds so it clears their screen
         this.time.delayedCall(10000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'green_hoodie') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'James') {
                 this.dialogue.next();
             }
         });
@@ -1125,14 +1125,14 @@ class MainScene extends Phaser.Scene {
 
         // NEW: Trigger Stijn's warning dialogue!
         this.dialogue.startDialogue([{
-            character: 'stijn',
+            character: 'Stijn',
             text: "We have just noticed that the rogue AI robots have developed a computer virus that reverses your controls!",
             waitForSpacebar: false // False so they can keep trying to fly!
         }]);
 
         // Auto-close the text balloon after 10 seconds
         this.time.delayedCall(10000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Stijn') {
                 this.dialogue.next(); // Dismiss the balloon
             }
         });
@@ -1152,14 +1152,14 @@ class MainScene extends Phaser.Scene {
 
         // 2. Show the Comms Dialogue
         this.dialogue.startDialogue([{
-            character: 'blonde_guy_comms',
+            character: 'Robbin_comms',
             text: "We have sent you an antivirus update for the ship!! This will turn your controls back to normal.",
             waitForSpacebar: false
         }]);
 
         // 3. Auto-close the text balloon after 6 seconds
         this.time.delayedCall(10000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
         });
@@ -1169,27 +1169,41 @@ class MainScene extends Phaser.Scene {
         this.currentPhase = 6; // Move to Phase 6
         this.adsGivenTime = currentTime; // Start the 10-second survival clock
 
-        // 1. Spawn 3 ads spread out across the screen
-        for (let i = 0; i < 3; i++) {
-            // Pick random coordinates, keeping them somewhat away from the very edges
-            let randomX = Phaser.Math.Between(150, this.cameras.main.width - 150);
-            let randomY = Phaser.Math.Between(150, this.cameras.main.height - 200);
+        const cam = this.cameras.main;
 
-            // Set depth very high (95) so it blocks the player and enemies!
-            let ad = this.add.image(randomX, randomY, 'ad_popup').setDepth(95);
-            this.adsArray.push(ad);
-        }
+        // --- NEW: INITIALIZE THE ARRAY ---
+        // This is where we will store the ads so the blocker can find them later!
+        this.adImages = [];
+
+        // Put our three image names into a list
+        const adKeys = ['ad_1', 'ad_2', 'ad_3'];
+
+        // Loop through the list and spawn one of each!
+        adKeys.forEach((adKey) => {
+            // Pick a random spot on the screen (leaving a little padding from the edges)
+            let randomX = Phaser.Math.Between(cam.width * 0.2, cam.width * 0.8);
+            let randomY = Phaser.Math.Between(cam.height * 0.2, cam.height * 0.8);
+
+            // Create the ad image
+            let ad = this.add.image(randomX, randomY, adKey).setDepth(200);
+
+            // Optional: Scale it down if your real ad images are massive
+            // ad.setScale(0.5); 
+
+            // --- NEW: SAVE THE AD TO THE ARRAY ---
+            this.adImages.push(ad);
+        });
 
         // 2. Trigger Green Hoodie's Dialogue
         this.dialogue.startDialogue([{
-            character: 'green_hoodie',
+            character: 'James',
             text: "You won't believe it but they have developed some ads that can block your view... like seriously?...",
             waitForSpacebar: false
         }]);
 
         // Auto-close text after 10 seconds
         this.time.delayedCall(10000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'green_hoodie') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'James') {
                 this.dialogue.next();
             }
         });
@@ -1200,14 +1214,14 @@ class MainScene extends Phaser.Scene {
 
         // 1. Trigger Blonde Guy's Dialogue
         this.dialogue.startDialogue([{
-            character: 'blonde_guy_comms',
+            character: 'Robbin_comms',
             text: "We have developed an adblocker for your ship, it will make quick work of these ads and get rid of them.",
             waitForSpacebar: false
         }]);
 
         // Auto-close text after 10 seconds
         this.time.delayedCall(10000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
         });
@@ -1228,14 +1242,14 @@ class MainScene extends Phaser.Scene {
             });
 
             // Destroy the ads one by one with a 1-second delay between each
-            this.adsArray.forEach((ad, index) => {
+            this.adImages.forEach((ad, index) => {
                 this.time.delayedCall(index * 1000, () => {
                     ad.destroy();
                 });
             });
 
             // Clear the array
-            this.adsArray = [];
+            this.adImages = [];
 
             // NEW: Start the crazy final wave exactly as the ads clear!
             this.triggerFinalWave();
@@ -1278,7 +1292,7 @@ class MainScene extends Phaser.Scene {
 
         // 1. Trigger the False Victory dialogue
         this.dialogue.startDialogue([{
-            character: 'blonde_guy_comms',
+            character: 'Robbin_comms',
             text: "Phase 2 is now over! We have successfully evolved against the robots and defeated them!",
             waitForSpacebar: false // Locks the text on screen
         }]);
@@ -1287,7 +1301,7 @@ class MainScene extends Phaser.Scene {
         this.time.delayedCall(5000, () => {
 
             // Forcefully hide the dialogue balloon
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
 
@@ -1296,7 +1310,7 @@ class MainScene extends Phaser.Scene {
 
                 // 4. Trigger Stijn's panic warning!
                 this.dialogue.startDialogue([{
-                    character: 'stijn',
+                    character: 'Stijn',
                     text: "Something is wrong! A very big object seems to be coming your way!!",
                     waitForSpacebar: false
                 }]);
@@ -1305,7 +1319,7 @@ class MainScene extends Phaser.Scene {
                 this.time.delayedCall(5000, () => {
 
                     // Hide Stijn's dialogue balloon
-                    if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn') {
+                    if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Stijn') {
                         this.dialogue.next();
                     }
 
@@ -1325,8 +1339,18 @@ class MainScene extends Phaser.Scene {
         const cam = this.cameras.main;
 
         // 1. Create the Boss off-screen (above the top)
-        this.boss = this.physics.add.sprite(cam.centerX, -200, 'boss_placeholder').setDepth(5);
+        this.boss = this.physics.add.sprite(cam.centerX, -150, 'boss');
         this.boss.setImmovable(true); // So player lasers don't physically push it backwards
+
+        // --- NEW: SCALE THE BOSS ---
+        // If your boss PNG is huge, you can scale it down here. 
+        // Or, dynamically scale it so it always takes up about 30% of the screen width!
+        const targetWidth = cam.width * 0.20;
+        const scaleFactor = targetWidth / this.boss.width;
+        this.boss.setScale(scaleFactor);
+
+        // Keep the physics box tight around the scaled image
+        this.boss.body.setSize(this.boss.width, this.boss.height);
 
         // 2. Setup Boss Collision
         this.physics.add.overlap(this.lasers, this.boss, this.hitBoss, null, this);
@@ -1368,7 +1392,7 @@ class MainScene extends Phaser.Scene {
 
                 // 2. Trigger the panicked dialogue!
                 this.dialogue.startDialogue([{
-                    character: 'blonde_guy_comms',
+                    character: 'Robbin_comms',
                     text: "We did NOT see this coming!!... A final rogue AI boss!! This is gonna be a hard fight. Team Future Ready will be on their way to help you!",
                     waitForSpacebar: false
                 }]);
@@ -1377,7 +1401,7 @@ class MainScene extends Phaser.Scene {
                 this.time.delayedCall(6000, () => {
 
                     // Dismiss the dialogue balloon
-                    if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+                    if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                         this.dialogue.next();
                     }
 
@@ -1437,7 +1461,7 @@ class MainScene extends Phaser.Scene {
 
         // 1. Fool-proof check: Figure out exactly which item is the laser and which is the boss
         let laser = (object1.texture && object1.texture.key === 'laser') ? object1 : object2;
-        let boss = (object1.texture && object1.texture.key === 'boss_placeholder') ? object1 : object2;
+        let boss = (object1.texture && object1.texture.key === 'boss') ? object1 : object2;
 
         // Destroy the laser safely
         if (laser && laser.active) {
@@ -1503,21 +1527,21 @@ class MainScene extends Phaser.Scene {
 
         // 2. Trigger the HQ Dialogue
         this.dialogue.startDialogue([{
-            character: 'blonde_guy_comms',
+            character: 'Robbin_comms',
             text: "Stijn and James have come to help you with their spaceships! It's time to scale up with the upgrades they have brought for your spaceship!",
             waitForSpacebar: false
         }]);
 
         // 3. Wait 12 seconds, clear dialogue, and bring in the helper ships!
         this.time.delayedCall(6000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'blonde_guy_comms') {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
 
             // Spawn helpers at the bottom edge of the screen as Sprites
             const cam = this.cameras.main;
-            let helperBlue = this.add.sprite(cam.width * 0.3, cam.height + 50, 'helperBlue').setDepth(9);
-            let helperPurple = this.add.sprite(cam.width * 0.7, cam.height + 50, 'helperPurple').setDepth(9);
+            let helperBlue = this.add.sprite(cam.width * 0.3, cam.height + 50, 'Helper ship blue').setDepth(9);
+            let helperPurple = this.add.sprite(cam.width * 0.7, cam.height + 50, 'Helper ship purple').setDepth(9);
 
             // Store them so we can make them shoot later!
             this.helperShips = [helperBlue, helperPurple];
@@ -1542,20 +1566,22 @@ class MainScene extends Phaser.Scene {
 
                     // 4. Helper Ships arrive, trigger their dialogue
                     this.dialogue.startDialogue([{
-                        character: 'stijn_spacesuit',
-                        character2: 'james_spacesuit', // NEW: The second portrait!
+                        character: 'Stijn_spacesuit',
+                        character2: 'James_spacesuit', // NEW: The second portrait!
                         text: "We have stronger cannons and a more powerful booster for your spaceship! And of course are we here to help!",
                         waitForSpacebar: false
                     }]);
 
                     // 5. Wait 6 seconds, grant upgrades, and RESUME FIGHT!
                     this.time.delayedCall(5000, () => {
-                        if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'stijn_spacesuit') {
+                        if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Stijn_spacesuit') {
                             this.dialogue.next();
                         }
 
                         // APPLY UPGRADES!
-                        this.player.setTexture('playerShipUpgraded');
+                        this.player.setTexture('player ship upgraded');
+                        // --- NEW: TELL THE GAME TO USE UPGRADED BOOSTERS ---
+                        this.isShipUpgraded = true;
                         this.playerSpeed = 500;
                         this.hasDoubleLaser = true;
 
@@ -1633,8 +1659,8 @@ class MainScene extends Phaser.Scene {
 
                     // 3. Trigger the dialogue
                     this.dialogue.startDialogue([{
-                        character: 'stijn_spacesuit',
-                        character2: 'james_spacesuit',
+                        character: 'Stijn_spacesuit',
+                        character2: 'James_spacesuit',
                         text: "Yes!! You did it! The final rogue AI boss has been defeated, time for us to head back to Earth!",
                         waitForSpacebar: false
                     }]);
@@ -1863,7 +1889,7 @@ class MainScene extends Phaser.Scene {
                         this.tutorialState = 'shooting';
                         this.visualKeys.rightText.setVisible(true);
                         this.dialogue.startDialogue([{
-                            character: 'blonde_guy_comms',
+                            character: 'Robbin_comms',
                             text: "Excellent maneuvering! Now tap or hold the right side to test the lasers!",
                             waitForSpacebar: false
                         }]);
@@ -1881,7 +1907,7 @@ class MainScene extends Phaser.Scene {
                     this.visualKeys.SPACE.setVisible(true);
                     this.tutorialUI.getAt(9).setVisible(true);
                     this.dialogue.startDialogue([{
-                        character: 'blonde_guy_comms',
+                        character: 'Robbin_comms',
                         text: "Excellent maneuvering! Now press spacebar to test the laser cannons!",
                         waitForSpacebar: false
                     }]);
@@ -1976,6 +2002,24 @@ class MainScene extends Phaser.Scene {
             }
         }
 
+        // --- NEW: DYNAMIC BOOSTER TEXTURES ---
+        // If the ship is currently moving, ignite the boosters!
+        if (isMoving) {
+            if (this.isShipUpgraded) {
+                this.player.setTexture('player ship upgraded boost');
+            } else {
+                this.player.setTexture('player ship boost');
+            }
+        }
+        // If the ship is standing still, turn the boosters off!
+        else {
+            if (this.isShipUpgraded) {
+                this.player.setTexture('player ship upgraded');
+            } else {
+                this.player.setTexture('Player ship');
+            }
+        }
+
         // --- SHOOTING ---
         // Prevent shooting if we are in the finale (Phase 99)
         if (isShooting && time > this.lastFired && this.currentPhase !== 99) {
@@ -2028,37 +2072,34 @@ class PartyScene extends Phaser.Scene {
         this.finalScore = data.score || 0;
     }
 
+    preload() {
+        this.load.image('party_bg_1', 'assets/party_bg_1.png');
+        this.load.image('party_bg_2', 'assets/party_bg_2.png');
+
+        this.load.image('Robbin', 'assets/Robbin.png');
+        this.load.image('Robbin_comms', 'assets/Robbin_comms.png'); // Maybe a holographic version?
+
+        // Load the UI panel backgrounds if you have them ready! 
+        // If not, you can leave the graphics generators for the UI in the create() method.
+        // this.load.image('leaderboard_bg', 'assets/leaderboard_bg.png');
+        // this.load.image('btn_bg', 'assets/btn_bg.png');
+    }
+
     create() {
         const cam = this.cameras.main;
 
         // --- 1. GENERATE PLACEHOLDER TEXTURES ---
         let gfx = this.make.graphics({ x: 0, y: 0, add: false });
 
-        // Festive Background Frame 1 (Darker Gray with confetti)
-        gfx.fillStyle(0x444455, 1).fillRect(0, 0, 800, 600);
-        gfx.fillStyle(0xff0000, 1).fillCircle(100, 100, 10);
-        gfx.fillStyle(0x00ff00, 1).fillCircle(600, 200, 10);
-        gfx.fillStyle(0x0000ff, 1).fillCircle(300, 500, 10);
-        gfx.generateTexture('party_bg_1', 800, 600);
-        gfx.clear();
-
-        // Festive Background Frame 2 (Slightly lighter with shifted confetti)
-        gfx.fillStyle(0x555566, 1).fillRect(0, 0, 800, 600);
-        gfx.fillStyle(0xffaa00, 1).fillCircle(120, 120, 10);
-        gfx.fillStyle(0x00ffff, 1).fillCircle(580, 220, 10);
-        gfx.fillStyle(0xff00ff, 1).fillCircle(320, 480, 10);
-        gfx.generateTexture('party_bg_2', 800, 600);
-        gfx.clear();
-
         // Leaderboard Panel
-        gfx.fillStyle(0x222222, 0.9).fillRoundedRect(0, 0, 400, 300, 16);
-        gfx.lineStyle(4, 0x00ffff, 1).strokeRoundedRect(0, 0, 400, 300, 16);
-        gfx.generateTexture('leaderboard_bg', 400, 300);
+        gfx.fillStyle(0x222222, 0.9).fillRoundedRect(0, 0, 600, 300, 16);
+        gfx.lineStyle(4, 0x00ffff, 1).strokeRoundedRect(0, 0, 600, 300, 16);
+        gfx.generateTexture('leaderboard_bg', 600, 300);
         gfx.clear();
 
         // Button Background
         gfx.fillStyle(0x0088ff, 1).fillRoundedRect(0, 0, 120, 40, 8);
-        gfx.generateTexture('btn_bg', 120, 40);
+        gfx.generateTexture('btn_bg', 200, 40);
         gfx.destroy();
 
         // --- 2. CREATE ANIMATED BACKGROUND ---
@@ -2072,7 +2113,13 @@ class PartyScene extends Phaser.Scene {
         }
 
         this.bg = this.add.sprite(cam.centerX, cam.centerY, 'party_bg_1').play('party_dance');
-        this.bg.setDisplaySize(cam.width, cam.height);
+
+        // --- NEW: SMART SCALING INSTEAD OF STRETCHING ---
+        // Calculate the scale needed to cover the screen proportionally
+        const scaleX = cam.width / this.bg.width;
+        const scaleY = cam.height / this.bg.height;
+        const scale = Math.max(scaleX, scaleY);
+        this.bg.setScale(scale);
 
         // --- 3. SETUP DIALOGUE MANAGER ---
         this.dialogue = new DialogueManager(this);
@@ -2114,7 +2161,7 @@ class PartyScene extends Phaser.Scene {
         // 1. Wait 2 seconds, then show first dialogue
         this.time.delayedCall(2000, () => {
             this.dialogue.startDialogue([{
-                character: 'blonde_guy',
+                character: 'Robbin',
                 text: "Awesome! The rogue AI robots have been defeated, thank you for your help!",
                 waitForSpacebar: false
             }]);
@@ -2211,7 +2258,7 @@ class PartyScene extends Phaser.Scene {
             onComplete: () => {
                 this.time.delayedCall(2000, () => {
                     this.dialogue.startDialogue([{
-                        character: 'blonde_guy',
+                        character: 'Robbin',
                         text: "Thank you for playing!",
                         waitForSpacebar: false
                     }]);
