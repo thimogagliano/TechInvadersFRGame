@@ -140,9 +140,9 @@ class DialogueManager {
         this.bubbleGraphics.fillStyle(0xffffff, 1);
 
         const tailTipX = this.boxX - 25;
-        const tailTipY = this.boxY + this.boxHeight - 20;
-        const tailTopY = this.boxY + this.boxHeight - 50;
-        const tailBottomY = this.boxY + this.boxHeight - 18;
+        const tailTipY = this.boxY + this.boxHeight - 40;
+        const tailTopY = this.boxY + this.boxHeight - 70;
+        const tailBottomY = this.boxY + this.boxHeight - 30;
 
         // Triangle tail
         this.bubbleGraphics.fillTriangle(this.boxX, tailTopY, tailTipX, tailTipY, this.boxX, tailBottomY);
@@ -153,10 +153,10 @@ class DialogueManager {
         this.bubbleGraphics.strokeRoundedRect(this.boxX, this.boxY, width, this.boxHeight, 8);
 
         // Seam hiding trick
-        this.bubbleGraphics.lineStyle(6, 0xffffff, 1);
+        this.bubbleGraphics.lineStyle(6, 0xffffff, 1,);
         this.bubbleGraphics.beginPath();
-        this.bubbleGraphics.moveTo(this.boxX, tailTopY + 2);
-        this.bubbleGraphics.lineTo(this.boxX, tailBottomY - 2);
+        this.bubbleGraphics.moveTo(this.boxX, tailTopY + 6);
+        this.bubbleGraphics.lineTo(this.boxX, tailBottomY - 3);
         this.bubbleGraphics.strokePath();
     }
 
@@ -205,7 +205,7 @@ class DialogueManager {
         if (this.typewriterTimer) this.typewriterTimer.remove();
 
         this.typewriterTimer = this.scene.time.addEvent({
-            delay: 30,
+            delay: 15,
             callback: () => {
                 this.dialogText.text += this.currentMessage.text[charIndex];
                 charIndex++;
@@ -264,89 +264,83 @@ class OfficeScene extends Phaser.Scene {
         super({ key: 'OfficeScene' });
     }
 
-    // TODO: When you have your real images, uncomment this block to load them:
-
     preload() {
         this.load.image('Future Ready Headquarters', 'assets/FrHq.png');
         this.load.image('Future Ready Headquarters Alarm', 'assets/FrHqAlarm.png');
 
+        // --- NEW: MOVED FROM MAIN SCENE ---
+        this.load.image('Future Ready launch platform', 'assets/FrLaunchPlatform.png');
+        this.load.spritesheet('Launching Spritesheet', 'assets/SpritesheetLaunch.png', {
+            frameWidth: 1500,
+            frameHeight: 1120
+        });
+
         this.load.image('Robbin', 'assets/Robbin.png');
-        this.load.image('Robbin_comms', 'assets/Robbin_comms.png'); // Maybe a holographic version?
+        this.load.image('Robbin_comms', 'assets/Robbin_comms.png');
         this.load.image('James', 'assets/James.png');
         this.load.image('James_spacesuit', 'assets/James_spacesuit.png');
         this.load.image('Stijn', 'assets/Stijn.png');
         this.load.image('Stijn_spacesuit', 'assets/Stijn_spacesuit.png');
     }
 
-
     create() {
         this.input.keyboard.clearCaptures();
 
-        // 1. Setup the Normal Office Background
         this.bgNormal = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'Future Ready Headquarters').setDepth(-2);
 
-        // 2. Setup the Red Alert Background (Hidden initially)
         this.bgRed = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY, 'Future Ready Headquarters Alarm').setDepth(-1);
         this.bgRed.setVisible(false);
 
-        // Scale both to perfectly cover the screen
+        // --- NEW: THE CUTSCENE BACKGROUND ---
+        this.cutsceneBg = this.add.sprite(this.cameras.main.centerX, this.cameras.main.centerY, 'Future Ready launch platform').setDepth(90);
+        this.cutsceneBg.setVisible(false);
+
+        // --- NEW: CREATE LAUNCH ANIMATION ---
+        if (!this.anims.exists('Launching Spritesheet')) {
+            this.anims.create({
+                key: 'Launching Spritesheet',
+                frames: this.anims.generateFrameNumbers('Launching Spritesheet', { start: 0, end: 9 }),
+                frameRate: 5,
+                repeat: 0
+            });
+        }
+
         this.scaleBackgroundToCover(this.bgNormal);
         this.scaleBackgroundToCover(this.bgRed);
 
-        // Handle resizing dynamically
         this.scale.on('resize', () => {
             this.scaleBackgroundToCover(this.bgNormal);
             this.scaleBackgroundToCover(this.bgRed);
+            if (this.cutsceneBg && this.cutsceneBg.visible) this.scaleBackgroundToCover(this.cutsceneBg);
             if (this.dialogue) this.dialogue.resize(this.cameras.main);
         }, this);
 
-        // Initialize Dialogue
         this.dialogue = new DialogueManager(this, true);
         this.dialogue.resize(this.cameras.main);
 
         this.input.keyboard.removeCapture(Phaser.Input.Keyboard.KeyCodes.SPACE);
-
         this.startWelcomeSequence();
 
-        // Clean up the global resize listener when this scene shuts down!
         this.events.once('shutdown', () => {
             this.scale.removeAllListeners('resize');
         });
     }
 
-    // --- REUSABLE HELPER ---
     scaleBackgroundToCover(bgImage, paddingMultiplier = 1.0) {
-        // NEW: Stop immediately if the image was destroyed by a scene change!
         if (!bgImage || !bgImage.active) return;
-
         const scaleX = this.cameras.main.width / bgImage.width;
         const scaleY = this.cameras.main.height / bgImage.height;
         const maxScale = Math.max(scaleX, scaleY) * paddingMultiplier;
-
         bgImage.setScale(maxScale);
         bgImage.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
     }
 
     startWelcomeSequence() {
-        // Queue the intro dialogue
         this.dialogue.startDialogue([
-            {
-                character: 'Robbin',
-                text: "Welcome to Future Ready HQ! Here we are working on the technology of the future!",
-                waitForSpacebar: true
-            },
-            {
-                character: 'Robbin',
-                text: "We have been waiting for you, our team needs your help...",
-                waitForSpacebar: true
-            },
-            {
-                character: 'Robbin',
-                text: "But first we need to know your name or how you want to be named so we can easily call when we need you.",
-                waitForSpacebar: true
-            }
+            { character: 'Robbin', text: "Welcome to Future Ready HQ! Here we are working on the technology of the future!", waitForSpacebar: true },
+            { character: 'Robbin', text: "We have been expecting your visit, our team needs your help...", waitForSpacebar: true },
+            { character: 'Robbin', text: "But first we would like to know your name so you can be a part of the team!", waitForSpacebar: true }
         ], () => {
-            // This runs automatically when the player finishes the dialogue above
             this.showNameInputForm();
         });
     }
@@ -355,68 +349,41 @@ class OfficeScene extends Phaser.Scene {
         const inputScreen = document.getElementById('name-input-screen');
         const submitBtn = document.getElementById('submit-name-button');
         const inputField = document.getElementById('player-name-input');
-        const errorMsg = document.getElementById('name-error-msg'); // Grab the new error element
+        const errorMsg = document.getElementById('name-error-msg');
 
-        // This stops Phaser from stealing the Spacebar so you can type freely!
         this.input.keyboard.enabled = false;
 
-        // --- NEW: HARD RESET FOR "PLAY AGAIN" ---
-        // This guarantees the HTML form is completely wiped clean every time it opens!
-        inputField.value = "";           // Clear the old name
-        inputField.disabled = false;     // Re-enable typing
-        submitBtn.disabled = false;      // Re-enable the button
-        submitBtn.innerText = "SUBMIT";  // Change it back from "CHECKING..."
-        errorMsg.innerText = "";         // Clear any old errors
+        inputField.value = "";
+        inputField.disabled = false;
+        submitBtn.disabled = false;
+        submitBtn.innerText = "SUBMIT";
+        errorMsg.innerText = "";
         inputScreen.style.display = 'flex';
         inputField.focus();
 
-        this.dialogue.startDialogue([{
-            character: 'Robbin',
-            text: "You can type your name in the field we have made!",
-            waitForSpacebar: false
-        }]);
+        this.dialogue.startDialogue([{ character: 'Robbin', text: "You can type your name in the field we have made!", waitForSpacebar: false }]);
 
-        // --- 1. BASIC PROFANITY FILTER ---
-        // You can expand this array with any specific words you want to block
         const badWords = ['badword1', 'swearword2', 'offensiveword3'];
 
-        // --- 2. MOCK DATABASE CHECK ---
-        // Simulates checking a server. We will replace this with your real database call later!
         const checkDatabaseForName = async (nameToCheck) => {
             return new Promise((resolve) => {
                 setTimeout(() => {
-                    // Mock list of names already "in the database"
                     const takenNames = [];
-                    if (takenNames.includes(nameToCheck)) {
-                        resolve(false); // Name is taken
-                    } else {
-                        resolve(true);  // Name is available
-                    }
-                }, 600); // 600ms fake server delay
+                    if (takenNames.includes(nameToCheck)) resolve(false);
+                    else resolve(true);
+                }, 600);
             });
         };
 
-        // --- 3. THE SUBMISSION LOGIC ---
-        // Notice the 'async' keyword so we can 'await' the database check
         const processSubmission = async () => {
-            // Now it respects exact casing!
             let playerName = inputField.value.trim();
 
-            // Validation A: Is it empty?
-            if (playerName === "") {
-                errorMsg.innerText = "Name cannot be empty!";
-                return;
-            }
+            if (playerName === "") { errorMsg.innerText = "Name cannot be empty!"; return; }
 
-            // Validation B: Profanity Check
             const containsBadWord = badWords.some(word => playerName.toLowerCase().includes(word.toLowerCase()));
-            if (containsBadWord) {
-                errorMsg.innerText = "Please choose a more appropriate name.";
-                return;
-            }
+            if (containsBadWord) { errorMsg.innerText = "Please choose a more appropriate name."; return; }
 
-            // Validation C: Database Uniqueness Check
-            submitBtn.innerText = "CHECKING..."; // Visual feedback for the player
+            submitBtn.innerText = "CHECKING...";
             submitBtn.disabled = true;
             inputField.disabled = true;
 
@@ -424,7 +391,6 @@ class OfficeScene extends Phaser.Scene {
 
             if (!isUnique) {
                 errorMsg.innerText = "That name is already taken!";
-                // Reset the form so they can try again
                 submitBtn.innerText = "submit";
                 submitBtn.disabled = false;
                 inputField.disabled = false;
@@ -432,19 +398,15 @@ class OfficeScene extends Phaser.Scene {
                 return;
             }
 
-            // If it passes all checks, proceed to the game!
             inputScreen.style.display = 'none';
             inputField.onkeydown = null;
             submitBtn.onclick = null;
-
-            // --- NEW: TURN PHASER'S KEYBOARD BACK ON! ---
             this.input.keyboard.enabled = true;
 
             this.startRedAlertSequence(playerName);
         };
 
         submitBtn.onclick = processSubmission;
-
         inputField.onkeydown = (event) => {
             if (event.key === 'Enter' && !submitBtn.disabled) {
                 event.preventDefault();
@@ -454,25 +416,47 @@ class OfficeScene extends Phaser.Scene {
     }
 
     startRedAlertSequence(playerName) {
-        // --- THE STROBE EFFECT ---
+        let strobeActive = true;
         const strobeEffect = () => {
-            // Only toggle if we are still in this scene
-            if (!this.scene.isActive('OfficeScene')) return;
-
+            if (!this.scene.isActive('OfficeScene') || !strobeActive) return;
             this.bgRed.setVisible(!this.bgRed.visible);
             this.time.delayedCall(800, strobeEffect);
         };
-        strobeEffect(); // Start the flashing
+        strobeEffect();
 
         this.dialogue.startDialogue([
-            { character: 'Robbin', text: "Oh no! We have very bad news! Rogue AI robots are about to attack the Earth!", waitForSpacebar: true },
-            { character: 'Robbin', text: "It's good that you have arrived, we have built a spaceship that needs testing! Quick, hop in!!", waitForSpacebar: true }
+            { character: 'Robbin', text: "Oh no! We have very bad news! Wild AI robots are about to visit the Earth!", waitForSpacebar: true },
+            { character: 'Robbin', text: "It's good that you have arrived, we have built a spaceship that needs testing!... Quick, hop in!!", waitForSpacebar: true }
         ], () => {
-            // DIAGNOSTIC TOOL: Print all available scenes to the console
-            console.log("Phaser loaded these scenes:", this.scene.manager.keys);
+            strobeActive = false; // Stop flashing
+            this.startCutscene(playerName); // Run the cutscene instead of switching scenes!
+        });
+    }
 
-            // Transition
-            this.scene.start('MainScene', { playerName: playerName });
+    // --- NEW: CUTSCENE SEQUENCE IN THE OFFICE ---
+    startCutscene(playerName) {
+        this.cutsceneBg.setTexture('Future Ready launch platform');
+        this.scaleBackgroundToCover(this.cutsceneBg);
+        this.cutsceneBg.setVisible(true);
+
+        this.dialogue.startDialogue([{
+            character: 'Robbin',
+            text: "This is our new hightech spaceship ready to be launched and tested against everything the future has to offer!",
+            waitForSpacebar: true
+        }], () => {
+            this.cutsceneBg.play('Launching Spritesheet');
+            this.scaleBackgroundToCover(this.cutsceneBg);
+
+            this.dialogue.startDialogue([{
+                character: 'Robbin_comms',
+                text: "Now it's time for you, " + playerName + ", to make this spaceship Future Ready!",
+                waitForSpacebar: true
+            }], () => {
+                this.cutsceneBg.stop();
+
+                // Now transition to space!
+                this.scene.start('MainScene', { playerName: playerName });
+            });
         });
     }
 }
@@ -538,13 +522,6 @@ class MainScene extends Phaser.Scene {
     }
 
     preload() {
-        // Load your real cutscene images!
-        this.load.image('Future Ready launch platform', 'assets/FrLaunchPlatform.png');
-        this.load.spritesheet('Launching Spritesheet', 'assets/SpritesheetLaunch.png', {
-            frameWidth: 1500,
-            frameHeight: 1120
-        });
-
         // --- NEW: THE UI HEART ---
         this.load.image('heart', 'assets/heart.png');
 
@@ -651,9 +628,6 @@ class MainScene extends Phaser.Scene {
         // Destroy when completely done
         gfx.destroy();
 
-        // Destroy when completely done
-        gfx.destroy();
-
         // NEW: Turn those frames into a playable animation safely!
         if (!this.anims.exists('boss_destruction')) {
             this.anims.create({
@@ -668,23 +642,6 @@ class MainScene extends Phaser.Scene {
                 repeat: 0
             });
         }
-
-        // --- NEW: CUTSCENE 2 ANIMATION ---
-        if (!this.anims.exists('Launching Spritesheet')) {
-            this.anims.create({
-                key: 'Launching Spritesheet',
-                // Change "end: 5" to the number of frames your animation has minus 1. 
-                // (e.g., if you have 6 frames, start is 0 and end is 5)
-                frames: this.anims.generateFrameNumbers('Launching Spritesheet', { start: 0, end: 9 }),
-                frameRate: 5, // How fast it plays (10 frames per second is a good start)
-                repeat: 0     // -1 tells it to loop forever!
-            });
-        }
-
-        // --- CUTSCENE OVERLAY ---
-        // CHANGED: add.image is now add.sprite so it can play animations!
-        this.cutsceneBg = this.add.sprite(this.cameras.main.centerX, this.cameras.main.centerY, 'Future Ready launch platform').setDepth(90);
-        this.cutsceneBg.setVisible(false);
 
         // 1. Setup Player 
         const centerX = this.cameras.main.centerX;
@@ -957,7 +914,7 @@ class MainScene extends Phaser.Scene {
         if (this.isTouch) {
             this.dialogue.startDialogue([{
                 character: 'Robbin_comms',
-                text: "Drag your finger on the left side of the screen to steer!",
+                text: "Can you hear me?... Good! Let's test the thrusters. Drag your finger on the left side of the screen to steer!",
                 waitForSpacebar: false
             }]);
         } else {
@@ -1005,62 +962,38 @@ class MainScene extends Phaser.Scene {
         }
     }
 
-    startCutscene() {
-        // 1. Show the first cutscene background
-        this.cutsceneBg.setTexture('Future Ready launch platform');
-        this.scaleBackgroundToCover(this.cutsceneBg);
-        this.cutsceneBg.setVisible(true);
-
-        // 2. Play the first part of the cutscene
-        this.dialogue.startDialogue([{
-            character: 'Robbin_comms',
-            text: "Fantastic! Everything works and phase 1 is completed. We have built the spaceship and launched it successfully!",
-            waitForSpacebar: true
-        }], () => {
-
-            // 3. This runs when they press spacebar on the first text. 
-            // NEW: Tell the sprite to play the animation!
-            this.cutsceneBg.play('Launching Spritesheet');
-
-            // Recalculate the scale just in case the animation frames are a different size
-            this.scaleBackgroundToCover(this.cutsceneBg);
-
-            // Trigger the second part of the dialogue
-            this.dialogue.startDialogue([{
+    startGameplay() {
+        // 1. Start the dialogue FIRST
+        this.dialogue.startDialogue([
+            {
                 character: 'Robbin_comms',
-                text: "We are detecting incoming rogue AI robots. Prepare for combat!",
+                text: "Fantastic! Everything works and phase 1 is completed. We have built the spaceship and launched it successfully!",
                 waitForSpacebar: true
-            }], () => {
+            },
+            {
+                character: 'Robbin_comms',
+                text: "Systems are green! We are detecting incoming robots, stop as many robots from visiting earth as you can!!",
+                waitForSpacebar: true
+            }
+        ], () => {
+            // --- THIS IS THE ON-COMPLETE CALLBACK ---
+            // This code ONLY runs after the player has completely finished 
+            // and closed the final dialogue balloon!
 
-                // 4. This runs when they press spacebar on the final text.
-                this.cutsceneBg.stop(); // NEW: Stop the animation to save memory!
-                this.cutsceneBg.setVisible(false);
-                this.startGameplay();
+            this.gameplayStartTime = this.time.now; // Record start time NOW
 
+            // Start the enemy spawner timer NOW
+            this.spawnerTimer = this.time.addEvent({
+                delay: 1200,
+                callback: this.spawnEnemy,
+                callbackScope: this,
+                loop: true
             });
         });
-    }
 
-    startGameplay() {
-        this.gameplayStartTime = this.time.now; // NEW: Record start time
-
-        // Start the enemy spawner timer that we removed from create()
-        this.spawnerTimer = this.time.addEvent({
-            delay: 1500,
-            callback: this.spawnEnemy,
-            callbackScope: this,
-            loop: true
-        });
-
-        // Give a final Good Luck message that the player can dismiss
-        this.dialogue.startDialogue([{
-            character: 'Robbin_comms',
-            text: "Systems are green! Here come the rogue robots. Defeat as many robots as you can!!",
-            waitForSpacebar: true
-        }]);
-
-        // 3. Auto-close the text balloon after 8 seconds so it clears their screen
-        this.time.delayedCall(8000, () => {
+        // 2. Auto-close the FIRST text balloon after 8 seconds if they forget to press spacebar.
+        // (Since there are two messages now, this will just push them to the second message automatically)
+        this.time.delayedCall(6000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
@@ -1080,94 +1013,29 @@ class MainScene extends Phaser.Scene {
             loop: true
         });
 
-        // 2. Start a 10-second survival timer to deliver the Firewall
-        this.time.delayedCall(10000, () => {
-            this.triggerFirewall();
-        });
-    }
-
-    triggerFirewall() {
-        this.currentPhase = 3; // Move to Phase 3
-        this.hasFirewall = true;
-        this.firewallHits = 0; // Reset hit counter
-
-        // NEW: Start the 20-second clock for the Virus!
-        this.firewallGivenTime = this.time.now;
-
-        // 1. Draw the transparent blue firewall circle
-        this.firewallVisual = this.add.circle(this.player.x, this.player.y, 35, 0x0088ff, 0.3);
-        this.firewallVisual.setStrokeStyle(2, 0x00ffff); // Glowing cyan border
-        this.firewallVisual.setDepth(10); // Keep it just above the player
-
-        // 2. Show the Green Hoodie Guy dialogue
-        this.dialogue.startDialogue([{
-            character: 'James', // Matches your DialogueManager portrait key
-            text: "We have developed a firewall for you to help with the damage from the robots!",
-            waitForSpacebar: false // False so they don't have to stop playing to read it
-        }]);
-
-        // 3. Auto-close the text balloon after 10 seconds so it clears their screen
-        this.time.delayedCall(10000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'James') {
-                this.dialogue.next();
-            }
-        });
-    }
-
-    triggerVirus(currentTime) {
-        this.currentPhase = 4; // Move to Phase 4
-        this.virusGivenTime = currentTime; // Start the 10-second survival clock
-        this.controlsReversed = true; // Flip the controls!
-
-        // Give the player a visual cue that something is wrong (glitch color)
-        this.player.setTint(0xaa00ff);
-        this.time.delayedCall(500, () => this.player.clearTint());
-
-        // NEW: Trigger Stijn's warning dialogue!
-        this.dialogue.startDialogue([{
-            character: 'Stijn',
-            text: "We have just noticed that the rogue AI robots have developed a computer virus that reverses your controls!",
-            waitForSpacebar: false // False so they can keep trying to fly!
-        }]);
-
-        // Auto-close the text balloon after 10 seconds
-        this.time.delayedCall(10000, () => {
-            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Stijn') {
-                this.dialogue.next(); // Dismiss the balloon
-            }
-        });
-    }
-
-    triggerAntivirus() {
-        this.currentPhase = 5; // Move to Phase 5
-        this.controlsReversed = false; // Fix the controls!
-        this.hasAntivirus = true;
-
-        // NEW: Record the time the Antivirus was given!
-        this.antivirusGivenTime = this.time.now;
-
-        // 1. Draw the Antivirus Visuals (Rounded square & Shield)
-        this.antivirusVisual = this.add.image(this.player.x, this.player.y, 'antivirus_aura').setDepth(11);
-        this.antivirusShield = this.add.image(this.player.x - 16, this.player.y - 16, 'shield_icon').setDepth(12);
-
-        // 2. Show the Comms Dialogue
+        // --- NEW: THE WARNING DIALOGUE ---
         this.dialogue.startDialogue([{
             character: 'Robbin_comms',
-            text: "We have sent you an antivirus update for the ship!! This will turn your controls back to normal.",
-            waitForSpacebar: false
+            text: "The robots are developing fast and we need to keep up with them! They also have lasers now that can disable things on your ship!",
+            waitForSpacebar: false // False so they can keep shooting!
         }]);
 
-        // 3. Auto-close the text balloon after 6 seconds
-        this.time.delayedCall(10000, () => {
+        // Auto-close the text balloon after 8 seconds so it clears their screen
+        this.time.delayedCall(8000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
         });
+
+        // 2. Start a 10-second survival timer to deliver the Firewall
+        this.time.delayedCall(10000, () => {
+            this.triggerAds();
+        });
     }
 
-    triggerAds(currentTime) {
-        this.currentPhase = 6; // Move to Phase 6
-        this.adsGivenTime = currentTime; // Start the 10-second survival clock
+    triggerAds() {
+        this.currentPhase = 3; // Move to Phase 6
+        this.adsGivenTime = this.time.now; // Start the 10-second survival clock
 
         const cam = this.cameras.main;
 
@@ -1197,7 +1065,7 @@ class MainScene extends Phaser.Scene {
         // 2. Trigger Green Hoodie's Dialogue
         this.dialogue.startDialogue([{
             character: 'James',
-            text: "You won't believe it but they have developed some ads that can block your view... like seriously?...",
+            text: "You won't believe it but the wild AI robots have developed some ads that can block your view... like seriously?...",
             waitForSpacebar: false
         }]);
 
@@ -1207,15 +1075,16 @@ class MainScene extends Phaser.Scene {
                 this.dialogue.next();
             }
         });
+
     }
 
     triggerAdblocker() {
-        this.currentPhase = 7; // Move to Phase 7
+        this.currentPhase = 4; // Move to Phase 7
 
         // 1. Trigger Blonde Guy's Dialogue
         this.dialogue.startDialogue([{
             character: 'Robbin_comms',
-            text: "We have developed an adblocker for your ship, it will make quick work of these ads and get rid of them.",
+            text: "We have built an adblocker for your ship, it will make quick work of these ads and get rid of them.",
             waitForSpacebar: false
         }]);
 
@@ -1252,9 +1121,91 @@ class MainScene extends Phaser.Scene {
             this.adImages = [];
 
             // NEW: Start the crazy final wave exactly as the ads clear!
-            this.triggerFinalWave();
         });
     }
+
+    triggerVirus(currentTime) {
+        this.currentPhase = 5; // Move to Phase 4
+        this.virusGivenTime = currentTime; // Start the 10-second survival clock
+        this.controlsReversed = true; // Flip the controls!
+
+        // Give the player a visual cue that something is wrong (glitch color)
+        this.player.setTint(0xaa00ff);
+        this.time.delayedCall(500, () => this.player.clearTint());
+
+        // NEW: Trigger Stijn's warning dialogue!
+        this.dialogue.startDialogue([{
+            character: 'Stijn',
+            text: "The wild AI robots have developed a computer virus that reverses your controls, watch out!",
+            waitForSpacebar: false // False so they can keep trying to fly!
+        }]);
+
+        // Auto-close the text balloon after 10 seconds
+        this.time.delayedCall(6000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Stijn') {
+                this.dialogue.next(); // Dismiss the balloon
+            }
+        });
+    }
+
+    triggerAntivirus() {
+        this.currentPhase = 6; // Move to Phase 5
+        this.controlsReversed = false; // Fix the controls!
+        this.hasAntivirus = true;
+
+        // NEW: Record the time the Antivirus was given!
+        this.antivirusGivenTime = this.time.now;
+
+        // 1. Draw the Antivirus Visuals (Rounded square & Shield)
+        this.antivirusVisual = this.add.image(this.player.x, this.player.y, 'antivirus_aura').setDepth(11);
+        this.antivirusShield = this.add.image(this.player.x - 16, this.player.y - 16, 'shield_icon').setDepth(12);
+
+        // 2. Show the Comms Dialogue
+        this.dialogue.startDialogue([{
+            character: 'Robbin_comms',
+            text: "We have built and sent an antivirus update for your spaceship!! This will turn your controls back to normal.",
+            waitForSpacebar: false
+        }]);
+
+        // 3. Auto-close the text balloon after 6 seconds
+        this.time.delayedCall(10000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
+                this.dialogue.next();
+            }
+        });
+    }
+
+    triggerFirewall() {
+        this.currentPhase = 7; // Move to Phase 3
+        this.hasFirewall = true;
+        this.firewallHits = 0; // Reset hit counter
+
+        // NEW: Start the 20-second clock for the Virus!
+        this.firewallGivenTime = this.time.now;
+
+        // 1. Draw the transparent blue firewall circle
+        this.firewallVisual = this.add.circle(this.player.x, this.player.y, 35, 0x0088ff, 0.3);
+        this.firewallVisual.setStrokeStyle(2, 0x00ffff); // Glowing cyan border
+        this.firewallVisual.setDepth(10); // Keep it just above the player
+
+        // 2. Show the Green Hoodie Guy dialogue
+        this.dialogue.startDialogue([{
+            character: 'James', // Matches your DialogueManager portrait key
+            text: "We have built a firewall shield for your spaceship to make it stronger and last longer!",
+            waitForSpacebar: false // False so they don't have to stop playing to read it
+        }]);
+
+        // 3. Auto-close the text balloon after 10 seconds so it clears their screen
+        this.time.delayedCall(6000, () => {
+            if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'James') {
+                this.dialogue.next();
+            }
+        });
+    }
+
+
+
+
 
     triggerFinalWave() {
         this.currentPhase = 8; // Move to Phase 8 (The Final Push)
@@ -1264,7 +1215,7 @@ class MainScene extends Phaser.Scene {
         this.spawnerTimer = this.time.addEvent({ delay: 200, callback: this.spawnEnemy, callbackScope: this, loop: true });
 
         // 2. Wait 2 seconds, then start slowing it down
-        this.time.delayedCall(2000, () => {
+        this.time.delayedCall(4000, () => {
 
             this.spawnerTimer.remove();
             this.spawnerTimer = this.time.addEvent({ delay: 600, callback: this.spawnEnemy, callbackScope: this, loop: true });
@@ -1293,7 +1244,7 @@ class MainScene extends Phaser.Scene {
         // 1. Trigger the False Victory dialogue
         this.dialogue.startDialogue([{
             character: 'Robbin_comms',
-            text: "Phase 2 is now over! We have successfully evolved against the robots and defeated them!",
+            text: "Phase 2 is now over! We have successfully evolved against the developments of the robots and scared them off!",
             waitForSpacebar: false // Locks the text on screen
         }]);
 
@@ -1311,7 +1262,7 @@ class MainScene extends Phaser.Scene {
                 // 4. Trigger Stijn's panic warning!
                 this.dialogue.startDialogue([{
                     character: 'Stijn',
-                    text: "Something is wrong! A very big object seems to be coming your way!!",
+                    text: "Something is wrong... A very big object seems to be coming your way!!",
                     waitForSpacebar: false
                 }]);
 
@@ -1360,7 +1311,7 @@ class MainScene extends Phaser.Scene {
 
         // Health Bar Background (Dark Gray)
         const barWidth = cam.width * 0.6;
-        const barHeight = 20;
+        const barHeight = 12;
         const barX = cam.centerX - (barWidth / 2);
         const barY = cam.height * 0.08; // Just below the top bar
 
@@ -1370,9 +1321,9 @@ class MainScene extends Phaser.Scene {
         this.bossBarFill = this.add.rectangle(barX, barY, barWidth, barHeight, 0xff0000).setOrigin(0, 0);
 
         // Boss Name Text
-        this.bossNameText = this.add.text(cam.centerX, barY + barHeight + 5, "Final Rogue AI Superboss XL", {
+        this.bossNameText = this.add.text(cam.centerX, barY + barHeight + 4, "Final Wild AI Superboss XL", {
             fontFamily: '"Press Start 2P", Courier, monospace',
-            fontSize: '14px',
+            fontSize: '12px',
             color: '#ff4444',
             fontStyle: 'bold'
         }).setOrigin(0.5, 0);
@@ -1393,7 +1344,7 @@ class MainScene extends Phaser.Scene {
                 // 2. Trigger the panicked dialogue!
                 this.dialogue.startDialogue([{
                     character: 'Robbin_comms',
-                    text: "We did NOT see this coming!!... A final rogue AI boss!! This is gonna be a hard fight. Team Future Ready will be on their way to help you!",
+                    text: "We did NOT see this coming!!... A final wild AI boss!! This is going to be hard to scare off! Team Future Ready will be on their way to help you!",
                     waitForSpacebar: false
                 }]);
 
@@ -1568,7 +1519,7 @@ class MainScene extends Phaser.Scene {
                     this.dialogue.startDialogue([{
                         character: 'Stijn_spacesuit',
                         character2: 'James_spacesuit', // NEW: The second portrait!
-                        text: "We have stronger cannons and a more powerful booster for your spaceship! And of course are we here to help!",
+                        text: "We have stronger blasters and more powerful thrusters for your spaceship! And of course are we here to help!",
                         waitForSpacebar: false
                     }]);
 
@@ -1661,7 +1612,7 @@ class MainScene extends Phaser.Scene {
                     this.dialogue.startDialogue([{
                         character: 'Stijn_spacesuit',
                         character2: 'James_spacesuit',
-                        text: "Yes!! You did it! The final rogue AI boss has been defeated, time for us to head back to Earth!",
+                        text: "Yes!! You did it! The final wild AI boss has been scared off, time for us to head back to Earth!",
                         waitForSpacebar: false
                     }]);
 
@@ -1908,7 +1859,7 @@ class MainScene extends Phaser.Scene {
                     this.tutorialUI.getAt(9).setVisible(true);
                     this.dialogue.startDialogue([{
                         character: 'Robbin_comms',
-                        text: "Excellent maneuvering! Now press spacebar to test the laser cannons!",
+                        text: "Excellent maneuvering! Now press spacebar to test the laser blasters!",
                         waitForSpacebar: false
                     }]);
                 }
@@ -1924,7 +1875,7 @@ class MainScene extends Phaser.Scene {
 
                     this.time.delayedCall(2000, () => {
                         this.tutorialUI.destroy();
-                        this.startCutscene();
+                        this.startGameplay();
                     });
                 }
             } else {
@@ -1934,7 +1885,7 @@ class MainScene extends Phaser.Scene {
                     this.visualKeys.SPACE.setFillStyle(0x00ff00);
                     this.time.delayedCall(2000, () => {
                         this.tutorialUI.destroy();
-                        this.startCutscene();
+                        this.startGameplay();
                     });
                 }
             }
@@ -1942,44 +1893,54 @@ class MainScene extends Phaser.Scene {
 
         // --- MOVEMENT RESTRICTIONS (THE INVISIBLE BOUNDARIES) ---
         // 1. Calculate the limits based on the current canvas height
-        const minY = this.cameras.main.height * 0.55; // Cannot go higher than the top 40% mark
+        const minY = this.cameras.main.height * 0.45; // Cannot go higher than the top 40% mark
         const maxY = this.cameras.main.height * 0.80; // Cannot go lower than the bottom 15% mark
 
         // --- PHASE MANAGER PROGRESSION ---
+        // Phase 1 to Phase 2 (Trigger AI Cloning when 5 enemies are defeated and 10s have passed)
         if (this.currentPhase === 1 && this.spawnerTimer) {
             let timePassed = time - this.gameplayStartTime;
-
-            // Condition: 5 robots defeated AND 10 seconds (10000ms) have passed
             if (this.enemiesDefeated >= 5 && timePassed >= 10000) {
                 this.triggerAICloning();
             }
         }
 
-        // Phase 3 to Phase 4 (Trigger Virus after 20 seconds)
-        if (this.currentPhase === 3 && this.firewallGivenTime > 0) {
-            if (time - this.firewallGivenTime >= 20000) {
+        // Phase 3 to Phase 4 (Trigger Adblocker 10 seconds after Ads spawn)
+        if (this.currentPhase === 3 && this.adsGivenTime > 0) {
+            if (time - this.adsGivenTime >= 10000) {
+                this.triggerAdblocker();
+            }
+        }
+
+        // Phase 4 to Phase 5 (Trigger Virus 10 seconds after Adblocker finishes)
+        // We use a delayed call inside triggerAdblocker() to start the virus, 
+        // OR we can trigger it here by saving the time the adblocker started!
+        // To keep it clean in the update loop, let's add a quick tracker:
+        if (this.currentPhase === 4) {
+            if (!this.adblockerGivenTime) this.adblockerGivenTime = time; // Save the time Phase 4 started
+            if (time - this.adblockerGivenTime >= 10000) {
                 this.triggerVirus(time);
             }
         }
 
-        // Phase 4 to Phase 5 (Trigger Antivirus after 10 seconds of survival)
-        if (this.currentPhase === 4 && this.virusGivenTime > 0) {
+        // Phase 5 to Phase 6 (Trigger Antivirus 10 seconds after Virus starts)
+        if (this.currentPhase === 5 && this.virusGivenTime > 0) {
             if (time - this.virusGivenTime >= 10000) {
                 this.triggerAntivirus();
             }
         }
 
-        // Phase 5 to Phase 6 (Trigger Ads 15 seconds after Antivirus)
-        if (this.currentPhase === 5 && this.antivirusGivenTime > 0) {
+        // Phase 6 to Phase 7 (Trigger Firewall 15 seconds after Antivirus)
+        if (this.currentPhase === 6 && this.antivirusGivenTime > 0) {
             if (time - this.antivirusGivenTime >= 15000) {
-                this.triggerAds(time);
+                this.triggerFirewall();
             }
         }
 
-        // Phase 6 to Phase 7 (Trigger Adblocker 10 seconds after Ads spawn)
-        if (this.currentPhase === 6 && this.adsGivenTime > 0) {
-            if (time - this.adsGivenTime >= 10000) {
-                this.triggerAdblocker();
+        // Phase 7 to Phase 8 (Trigger Final Wave 10 seconds after Firewall)
+        if (this.currentPhase === 7 && this.firewallGivenTime > 0) {
+            if (time - this.firewallGivenTime >= 10000) {
+                this.triggerFinalWave();
             }
         }
 
@@ -2162,7 +2123,7 @@ class PartyScene extends Phaser.Scene {
         this.time.delayedCall(2000, () => {
             this.dialogue.startDialogue([{
                 character: 'Robbin',
-                text: "Awesome! The rogue AI robots have been defeated, thank you for your help!",
+                text: "Awesome! The wild AI robots have been scared off, thank you for your help!",
                 waitForSpacebar: false
             }]);
 
