@@ -3,13 +3,59 @@ class TitleScene extends Phaser.Scene {
         super({ key: 'TitleScene' });
     }
 
-    create() {
-        // 1. Grab your HTML title screen elements
-        const startScreen = document.getElementById('start-screen');
-        const playButton = document.getElementById('play-button');
 
-        // 2. Make sure the HTML screen is visible
+    preload() {
+        // --- 1. LOAD YOUR ASSETS ---
+        // Replace 'assets/TitleBg.png' with your actual background file!
+        this.load.image('Titlescreen background', 'assets/TitlescreenBackground.png');
+
+        // Load the ships we want to use as ambient flying objects
+        this.load.image('Player ship', 'assets/SchipSpelerBooster.png');
+        this.load.image('Helper ship blue', 'assets/HelperShipBlueBooster.png');
+        this.load.image('Helper ship purple', 'assets/HelperShipPurpleBooster.png');
+        this.load.image('EnemyRobot', 'assets/EnemyRobot.png');
+        this.load.image('Polygon', 'assets/PolygonFRD.png');
+        this.load.image('Rectangle', 'assets/RectangleFRD.png');
+        this.load.image('Arrow', 'assets/ArrowFRD.png');
+
+    }
+
+    create() {
+        const startScreen = document.getElementById('start-screen');
+        const cam = this.cameras.main;
+        const playButton = document.getElementById('play-button');
         startScreen.style.display = 'flex';
+
+        // --- 2. SETUP THE STATIC BACKGROUND ---
+        this.bg = this.add.image(cam.centerX, cam.centerY, 'Titlescreen background').setDepth(-10);
+        this.scaleBackgroundToCover(this.bg);
+
+        // --- 3. SETUP THE FLYING OBJECTS GROUP ---
+        this.flyingObjects = this.physics.add.group();
+
+        // --- NEW: DRAW THE ARCADE CABINET BORDER ---
+        this.drawArcadeBorder();
+
+        // --- 4. CREATE THE SPAWNER TIMER ---
+        this.time.addEvent({
+            delay: 1500,
+            callback: this.spawnFlyingObject,
+            callbackScope: this,
+            loop: true
+        });
+
+        // Handle window resizing
+        this.scale.on('resize', () => {
+            this.scaleBackgroundToCover(this.bg);
+
+            // --- NEW: REDRAW THE BORDER IF THE SCREEN CHANGES SIZE ---
+            this.drawArcadeBorder();
+        }, this);
+
+        // Cleanup listeners
+        this.events.once('shutdown', () => {
+            this.scale.removeAllListeners('resize');
+        });
 
         // 3. When the player clicks "PLAY GAME", hide the HTML and start the game!
         // (We use .onclick instead of addEventListener so it doesn't duplicate if they play twice)
@@ -17,6 +63,136 @@ class TitleScene extends Phaser.Scene {
             startScreen.style.display = 'none';
             this.scene.start('OfficeScene');
         };
+    }
+
+    scaleBackgroundToCover(bgImage) {
+        if (!bgImage || !bgImage.active) return;
+        const cam = this.cameras.main;
+        const scaleX = cam.width / bgImage.width;
+        const scaleY = cam.height / bgImage.height;
+        const maxScale = Math.max(scaleX, scaleY);
+        bgImage.setScale(maxScale);
+        bgImage.setPosition(cam.centerX, cam.centerY);
+    }
+
+    spawnFlyingObject() {
+        const cam = this.cameras.main;
+
+        // Pick a random object from the ones we loaded
+        const objectTypes = ['Player ship', 'EnemyRobot', 'Polygon', 'Rectangle', 'Arrow', 'Helper ship blue', 'Helper ship purple'];
+        const randomObjectKey = Phaser.Utils.Array.GetRandom(objectTypes);
+
+        // Decide if it starts on the Left (0) or Right (1)
+        const startSide = Phaser.Math.Between(0, 1);
+
+        // Pick a random height on the screen
+        const startY = Phaser.Math.Between(cam.height * 0.1, cam.height * 0.9);
+
+        let startX, velocityX, angle;
+
+        // --- NEW: CHECK WHAT KIND OF OBJECT IT IS ---
+        // If the word "ship" is in the name, it's a ship! Otherwise, it's a robot/other.
+        const isShip = randomObjectKey.toLowerCase().includes('ship');
+        const isRobot = randomObjectKey.toLowerCase().includes('robot');
+
+        if (startSide === 0) {
+            // Spawn on the LEFT edge, fly to the RIGHT
+            startX = -100;
+            velocityX = Phaser.Math.Between(100, 300); // Speed
+
+            // --- CHANGED: Only rotate if it's a ship ---
+            angle = isShip ? 90 : 0;
+        } else {
+            // Spawn on the RIGHT edge, fly to the LEFT
+            startX = cam.width + 100;
+            velocityX = Phaser.Math.Between(-100, -300); // Negative speed goes left
+
+            // --- CHANGED: Only rotate if it's a ship ---
+            angle = isShip ? -90 : 0;
+        }
+
+        // Create the object! Depth -5 puts it above the background, but behind HTML
+        let flyingObj = this.flyingObjects.create(startX, startY, randomObjectKey).setDepth(-5);
+
+        // Apply physics and rotation
+        flyingObj.setVelocityX(velocityX);
+        flyingObj.setAngle(angle);
+
+        // --- CHANGED: CONDITIONAL SCALING ---
+        let randomScale;
+        if (isShip) {
+            // Normal size for ships
+            randomScale = Phaser.Math.FloatBetween(0.5, 1);
+        } else if (isRobot) {
+            // Noticeably smaller size for robots and other objects
+            randomScale = Phaser.Math.FloatBetween(0.7, 1.2);
+        } else {
+            // Noticeably smaller size for robots and other objects
+            randomScale = Phaser.Math.FloatBetween(0.2, 0.4);
+        }
+
+        flyingObj.setScale(randomScale);
+        flyingObj.setAlpha(Phaser.Math.FloatBetween(0.7, 1));
+    }
+
+    drawArcadeBorder() {
+        const cam = this.cameras.main;
+
+        // If the border already exists (like during a window resize), clear it out first!
+        if (this.arcadeBorder) {
+            this.arcadeBorder.clear();
+        } else {
+            // Create the graphics object on the very top layer (Depth 100)
+            this.arcadeBorder = this.add.graphics().setDepth(100);
+        }
+
+        // Determine how thick the arcade cabinet plastic should be
+        const isMobile = cam.width < 600;
+        const thickness = isMobile ? 6 : 30;
+
+        // --- 1. DRAW THE THICK BLACK/DARK GREY OUTER CABINET ---
+        this.arcadeBorder.fillStyle(0x1a1a1a, 1); // Dark charcoal grey
+
+        // Draw the 4 walls of the border
+        this.arcadeBorder.fillRect(0, 0, cam.width, thickness); // Top
+        this.arcadeBorder.fillRect(0, cam.height - thickness, cam.width, thickness); // Bottom
+        this.arcadeBorder.fillRect(0, 0, thickness, cam.height); // Left
+        this.arcadeBorder.fillRect(cam.width - thickness, 0, thickness, cam.height); // Right
+
+        // --- 2. DRAW THE NEON INNER ACCENT LINE ---
+        // This gives it that classic 80s/90s arcade machine screen glow
+        this.arcadeBorder.lineStyle(4, 0x00ffff, 0.8); // 4px thick, Cyan color, 80% opacity
+
+        // Draw the stroke exactly inside the thick walls
+        this.arcadeBorder.strokeRect(
+            thickness,
+            thickness,
+            cam.width - (thickness * 2),
+            cam.height - (thickness * 2)
+        );
+
+        // Optional: Add a second, thinner inner line for detail
+        this.arcadeBorder.lineStyle(1, 0xff00ff, 0.5); // Thin magenta line
+        this.arcadeBorder.strokeRect(
+            thickness + 6,
+            thickness + 6,
+            cam.width - (thickness * 2) - 12,
+            cam.height - (thickness * 2) - 12
+        );
+    }
+
+    update() {
+        const cam = this.cameras.main;
+
+        // --- MEMORY CLEANUP ---
+        // Destroy ships that have flown completely off the screen so the game doesn't crash!
+        this.flyingObjects.children.iterate((ship) => {
+            if (ship) {
+                if (ship.x < -150 || ship.x > cam.width + 150) {
+                    ship.destroy();
+                }
+            }
+        });
     }
 }
 
@@ -40,10 +216,10 @@ class DialogueManager {
 
         // --- 1. FIX: ANCHOR THE PORTRAITS TO THE BOTTOM ---
         // setOrigin(0, 1) anchors it to the Bottom-Left corner
-        this.portrait = this.scene.add.image(0, 0, 'blonde_guy').setOrigin(0, 1);
+        this.portrait = this.scene.add.image(0, 0, 'Robbin').setOrigin(0, 1);
 
         // setOrigin(1, 1) anchors it to the Bottom-Right corner
-        this.portraitSecondary = this.scene.add.image(0, 0, 'blonde_guy').setOrigin(1, 1);
+        this.portraitSecondary = this.scene.add.image(0, 0, 'Robbin').setOrigin(1, 1);
         this.portraitSecondary.setVisible(false);
 
         // Text setup
@@ -265,8 +441,8 @@ class OfficeScene extends Phaser.Scene {
     }
 
     preload() {
-        this.load.image('Future Ready Headquarters', 'assets/FrHq.png');
-        this.load.image('Future Ready Headquarters Alarm', 'assets/FrHqAlarm.png');
+        this.load.image('Future Ready Headquarters', 'assets/FrHqV2.png');
+        this.load.image('Future Ready Headquarters Alarm', 'assets/FrHqAlarmV2.png');
 
         // --- NEW: MOVED FROM MAIN SCENE ---
         this.load.image('Future Ready launch platform', 'assets/FrLaunchPlatform.png');
@@ -311,6 +487,7 @@ class OfficeScene extends Phaser.Scene {
         this.scale.on('resize', () => {
             this.scaleBackgroundToCover(this.bgNormal);
             this.scaleBackgroundToCover(this.bgRed);
+            if (this.uiCamera) this.uiCamera.setSize(this.scale.width, this.scale.height);
             if (this.cutsceneBg && this.cutsceneBg.visible) this.scaleBackgroundToCover(this.cutsceneBg);
             if (this.dialogue) this.dialogue.resize(this.cameras.main);
         }, this);
@@ -433,19 +610,61 @@ class OfficeScene extends Phaser.Scene {
         });
     }
 
-    // --- NEW: CUTSCENE SEQUENCE IN THE OFFICE ---
     startCutscene(playerName) {
-        this.cutsceneBg.setTexture('Future Ready launch platform');
-        this.scaleBackgroundToCover(this.cutsceneBg);
-        this.cutsceneBg.setVisible(true);
+        const cam = this.cameras.main;
 
+        // 1. Create the border - MADE 20% LARGER so the edges don't show when it shakes!
+        if (this.cutsceneBorder) this.cutsceneBorder.destroy();
+        this.cutsceneBorder = this.add.rectangle(cam.centerX, cam.centerY, cam.width * 1.2, cam.height * 1.2, 0x000000).setDepth(1999);
+        this.cutsceneBorder.setVisible(true);
+
+        // --- NEW: MULTI-CAMERA MAGIC ---
+        // If we haven't created a UI camera yet, create one now
+        if (!this.uiCamera) {
+            this.uiCamera = this.cameras.add(0, 0, cam.width, cam.height);
+        }
+
+        // Tell the Main Camera (which will shake) to ignore the dialogue box
+        this.cameras.main.ignore(this.dialogue.uiContainer);
+
+        // Tell the UI Camera (which stays still) to ignore the background and the cutscene
+        this.uiCamera.ignore([this.bgNormal, this.bgRed, this.cutsceneBg, this.cutsceneBorder]);
+        // -------------------------------
+
+        // 2. Setup the Sprite - Force it to the very top
+        this.cutsceneBg.setDepth(2000);
+        this.cutsceneBg.setVisible(true);
+        this.cutsceneBg.setAlpha(1);
+        this.cutsceneBg.setTexture('Future Ready launch platform');
+
+        // 3. Robust Scaling Logic
+        const imgWidth = this.cutsceneBg.width || 100;
+        const imgHeight = this.cutsceneBg.height || 100;
+
+        const scaleX = cam.width / imgWidth;
+        const scaleY = cam.height / imgHeight;
+        const fitScale = Math.min(scaleX, scaleY) * 0.85;
+
+        this.cutsceneBg.setScale(fitScale);
+        this.cutsceneBg.setPosition(cam.centerX, cam.centerY);
+
+        // 4. Start Dialogue
         this.dialogue.startDialogue([{
             character: 'Robbin',
             text: "This is our new hightech spaceship ready to be launched and tested against everything the future has to offer!",
             waitForSpacebar: true
         }], () => {
-            this.cutsceneBg.play('Launching Spritesheet');
-            this.scaleBackgroundToCover(this.cutsceneBg);
+
+            // 5. Play the animation
+            if (this.anims.exists('Launching Spritesheet')) {
+                this.cutsceneBg.play('Launching Spritesheet');
+            }
+
+            const animScale = Math.min(cam.width / (this.cutsceneBg.width || 100), cam.height / (this.cutsceneBg.height || 100)) * 0.85;
+            this.cutsceneBg.setScale(animScale);
+
+            // Trigger the shake on the MAIN camera only!
+            this.cameras.main.shake(2500, 0.005);
 
             this.dialogue.startDialogue([{
                 character: 'Robbin_comms',
@@ -453,8 +672,7 @@ class OfficeScene extends Phaser.Scene {
                 waitForSpacebar: true
             }], () => {
                 this.cutsceneBg.stop();
-
-                // Now transition to space!
+                // When we transition to MainScene, Phaser automatically cleans up our extra UI camera!
                 this.scene.start('MainScene', { playerName: playerName });
             });
         });
@@ -471,7 +689,7 @@ class MainScene extends Phaser.Scene {
         //detect touch input   
         this.isTouch = this.sys.game.device.input.touch;
         // Catch the name, or use fallback
-        this.playerName = data.playerName || "RobotFighter007";
+        this.playerName = data.playerName || "FutureReady007";
 
         // NEW: Catch the skip flag! If it wasn't passed, default to false.
         this.skipTutorial = data.skipTutorial || false;
@@ -527,16 +745,24 @@ class MainScene extends Phaser.Scene {
 
         this.load.image('Space background', 'assets/SpaceBg.png');
         // --- NEW: MAIN ACTORS ---
-        this.load.image('Player ship', 'assets/SchipSpeler.png'); // Your starting ship
+        this.load.image('player ship', 'assets/SchipSpeler.png'); // Your starting ship
         this.load.image('player ship upgraded', 'assets/SchipSpelerUpgraded.png'); // Phase 2 upgraded ship
         this.load.image('player ship boost', 'assets/SchipSpelerBooster.png');
         this.load.image('player ship upgraded boost', 'assets/SchipSpelerUpgradedBooster.png');
         this.load.image('Helper ship blue', 'assets/HelperShipBlue.png');
+        this.load.image('Helper ship blue boost', 'assets/HelperShipBlueBooster.png');
         this.load.image('Helper ship purple', 'assets/HelperShipPurple.png');
+        this.load.image('Helper ship purple boost', 'assets/HelperShipPurpleBooster.png');
 
 
         this.load.image('EnemyRobot', 'assets/EnemyRobot.png'); // The Phase 1/2 robots
         this.load.image('boss', 'assets/boss.png');
+        this.load.spritesheet('boss_destruction_sheet', 'assets/BossExplodeSpritesheet.png', {
+            frameWidth: 300, // <-- CHANGE THIS to your actual frame width
+            frameHeight: 200 // <-- CHANGE THIS to your actual frame height
+        });
+
+
         // --- NEW: THE AD POPUPS ---
 
         this.load.image('ad_1', 'assets/NumberOneAppsAd.png');
@@ -600,46 +826,19 @@ class MainScene extends Phaser.Scene {
         gfx.fillRoundedRect(0, 0, 8, 24, 4);
         gfx.generateTexture('boss_laser', 8, 24);
 
-        // 13. Boss Explosion Frame 1 (Cracked)
-        gfx.fillStyle(0x880044, 1);
-        gfx.fillRect(0, 0, 200, 150);
-        gfx.fillStyle(0x000000, 1);
-        gfx.fillRect(80, 0, 10, 150); // Vertical crack
-        gfx.fillRect(0, 70, 200, 10); // Horizontal crack
-        gfx.generateTexture('boss_explode_1', 200, 150);
-        gfx.clear();
-
-        // 14. Boss Explosion Frame 2 (Broken into chunks)
-        gfx.fillStyle(0x880044, 1);
-        gfx.fillRect(0, 0, 80, 70); // Top left chunk
-        gfx.fillRect(100, 80, 100, 70); // Bottom right chunk
-        gfx.fillStyle(0xffaa00, 1);
-        gfx.fillCircle(100, 75, 20); // Exposed core shrinking
-        gfx.generateTexture('boss_explode_2', 200, 150);
-        gfx.clear();
-
-        // 15. Boss Explosion Frame 3 (Flash and smoke)
-        gfx.fillStyle(0xffaaaa, 1);
-        gfx.fillCircle(100, 75, 80);
-        gfx.fillStyle(0xff4400, 1);
-        gfx.fillCircle(100, 75, 50);
-        gfx.generateTexture('boss_explode_3', 200, 150);
-
         // Destroy when completely done
         gfx.destroy();
 
-        // NEW: Turn those frames into a playable animation safely!
+        // --- UPDATED: BOSS DESTRUCTION ANIMATION ---
         if (!this.anims.exists('boss_destruction')) {
             this.anims.create({
                 key: 'boss_destruction',
-                frames: [
-                    { key: 'boss_placeholder' },
-                    { key: 'boss_explode_1' },
-                    { key: 'boss_explode_2' },
-                    { key: 'boss_explode_3' }
-                ],
-                frameRate: 2,
-                repeat: 0
+                // Use the new spritesheet! 
+                // Change "end: 5" to the number of frames your animation has minus 1. 
+                // (e.g., if you have 6 frames, start is 0 and end is 5)
+                frames: this.anims.generateFrameNumbers('boss_destruction_sheet', { start: 0, end: 8 }),
+                frameRate: 4, // Adjust this to make the explosion faster or slower!
+                repeat: 0     // 0 means it only plays exactly once, which is what we want!
             });
         }
 
@@ -1491,8 +1690,8 @@ class MainScene extends Phaser.Scene {
 
             // Spawn helpers at the bottom edge of the screen as Sprites
             const cam = this.cameras.main;
-            let helperBlue = this.add.sprite(cam.width * 0.3, cam.height + 50, 'Helper ship blue').setDepth(9);
-            let helperPurple = this.add.sprite(cam.width * 0.7, cam.height + 50, 'Helper ship purple').setDepth(9);
+            let helperBlue = this.add.sprite(cam.width * 0.3, cam.height + 50, 'Helper ship blue boost').setDepth(9);
+            let helperPurple = this.add.sprite(cam.width * 0.7, cam.height + 50, 'Helper ship purple boost').setDepth(9);
 
             // Store them so we can make them shoot later!
             this.helperShips = [helperBlue, helperPurple];
@@ -1769,19 +1968,14 @@ class MainScene extends Phaser.Scene {
 
     update(time, delta) {
         this.player.setVelocity(0);
-        let isMoving = false;
+        let isMoving = false; // We are bringing this back!
         let isShooting = false;
 
-        // --- KEYBOARD CONTROLS ---
-        // If controls are reversed, multiply the speed by -1
         let currentSpeed = this.controlsReversed ? -this.playerSpeed : this.playerSpeed;
 
-        // NEW: ONLY allow movement and touch controls if we are NOT in the Finale!
         if (this.currentPhase !== 99) {
 
             // --- KEYBOARD CONTROLS ---
-            let currentSpeed = this.controlsReversed ? -this.playerSpeed : this.playerSpeed;
-
             if (this.cursors.left.isDown || this.wasd.A.isDown) {
                 this.player.setVelocityX(-currentSpeed);
                 isMoving = true;
@@ -1802,23 +1996,27 @@ class MainScene extends Phaser.Scene {
                 isShooting = true;
             }
 
-            // --- TOUCH CONTROLS (UPGRADED) ---
+            // --- TOUCH CONTROLS ---
             this.input.manager.pointers.forEach(pointer => {
                 if (pointer.isDown) {
                     if (pointer.x < this.cameras.main.width / 2) {
-                        // Move smoothly towards the finger
                         this.physics.moveTo(this.player, pointer.x, pointer.y, this.playerSpeed);
 
-                        // Prevent the ship from violently jittering when it reaches the finger
                         const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, pointer.x, pointer.y);
-                        if (distance < 15) {
+
+                        // --- THE FIX ---
+                        // Only trigger the booster if the ship is actually far enough away to travel!
+                        if (distance > 15) {
+                            isMoving = true;
+
+                            if (this.controlsReversed) {
+                                this.player.body.velocity.x *= -1;
+                                this.player.body.velocity.y *= -1;
+                            }
+                        } else {
                             this.player.setVelocity(0);
-                        } else if (this.controlsReversed) {
-                            // Apply the virus effect to touch controls!
-                            this.player.body.velocity.x *= -1;
-                            this.player.body.velocity.y *= -1;
+                            // isMoving safely stays false here!
                         }
-                        isMoving = true;
                     }
                     if (pointer.x >= this.cameras.main.width / 2) {
                         isShooting = true;
@@ -1962,9 +2160,7 @@ class MainScene extends Phaser.Scene {
                 this.player.y = maxY;
             }
         }
-
         // --- NEW: DYNAMIC BOOSTER TEXTURES ---
-        // If the ship is currently moving, ignite the boosters!
         if (isMoving) {
             if (this.isShipUpgraded) {
                 this.player.setTexture('player ship upgraded boost');
@@ -1977,7 +2173,7 @@ class MainScene extends Phaser.Scene {
             if (this.isShipUpgraded) {
                 this.player.setTexture('player ship upgraded');
             } else {
-                this.player.setTexture('Player ship');
+                this.player.setTexture('player ship');
             }
         }
 
