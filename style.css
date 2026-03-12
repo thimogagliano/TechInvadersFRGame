@@ -7,14 +7,7 @@ body {
     background-color: #000;
     /* Outer webpage is black */
     overflow: hidden;
-}
-
-body {
-    margin: 0;
-    background-color: #05000a;
-    /* An extra dark space color for the margins */
-    overflow: hidden;
-    /* Prevents scrollbars from appearing */
+    z-index: 10;
 }
 
 #start-screen,
@@ -38,14 +31,15 @@ body {
     border-radius: 8px;
     /* Optional: Rounds the corners slightly for a polished look */
     overflow: hidden;
+    z-index: 1;
 }
 
 #start-screen {
-    background-color: #0b001a;
+    position: absolute;
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000;
+    z-index: 10;
     font-family: 'Press Start 2P', monospace;
     color: white;
     text-align: center;
