@@ -435,7 +435,7 @@ class DialogueManager {
             this.isTyping = false;
 
             if (this.currentMessage.waitForSpacebar) {
-                this.hintText.setText("press spacebar to continue");
+                this.hintText.setText("tap / space to continue");
                 this.hintText.setVisible(true);
             } else {
                 this.hintText.setVisible(false);
@@ -772,6 +772,8 @@ class MainScene extends Phaser.Scene {
         this.phase2Triggered = false;
         this.bossShielded = false;
         this.hasDoubleLaser = false;
+        // --- THE FIX: WIPE THE OLD DIALOGUE MANAGER MEMORY ---
+        this.dialogue = null;
     }
 
     preload() {
@@ -834,19 +836,24 @@ class MainScene extends Phaser.Scene {
         // NEW LINE: Create the graphics tool so we can draw the placeholders!
         let gfx = this.make.graphics({ x: 0, y: 0, add: false });
 
-        // Laser (Yellow Rectangle)
-        gfx.fillStyle(0x17F0E6, 1);
-        gfx.fillRect(0, 0, 4, 16);
-        gfx.generateTexture('laser', 4, 16);
-        gfx.clear();
+        // --- THE FIX: ONLY GENERATE TEXTURES IF THEY DON'T EXIST YET ---
+        if (!this.textures.exists('laser')) {
+            let gfx = this.make.graphics({ x: 0, y: 0, add: false });
 
-        // 9. Boss Laser (Orange/Red oval)
-        gfx.fillStyle(0xff5500, 1);
-        gfx.fillRoundedRect(0, 0, 8, 24, 4);
-        gfx.generateTexture('boss_laser', 8, 24);
+            // 1. Player Laser (Yellow/Cyan Rectangle)
+            gfx.fillStyle(0x17F0E6, 1);
+            gfx.fillRect(0, 0, 4, 16);
+            gfx.generateTexture('laser', 4, 16);
+            gfx.clear();
 
-        // Destroy when completely done
-        gfx.destroy();
+            // 2. Boss Laser (Orange/Red oval)
+            gfx.fillStyle(0xff5500, 1);
+            gfx.fillRoundedRect(0, 0, 8, 24, 4);
+            gfx.generateTexture('boss_laser', 8, 24);
+
+            // Destroy the graphics tool when completely done
+            gfx.destroy();
+        }
 
         // --- UPDATED: BOSS DESTRUCTION ANIMATION ---
         if (!this.anims.exists('boss_destruction')) {
@@ -873,7 +880,7 @@ class MainScene extends Phaser.Scene {
         // 1. Setup Player 
         const centerX = this.cameras.main.centerX;
         const startY = this.cameras.main.height - 100;
-        this.player = this.physics.add.sprite(centerX, startY, 'Player ship');
+        this.player = this.physics.add.sprite(centerX, startY, 'player ship');
         this.player.setCollideWorldBounds(true);
 
         // 2. Setup Physics Groups
@@ -1166,6 +1173,27 @@ class MainScene extends Phaser.Scene {
         // Add a clean margin (15px mobile / 25px desktop) between the hearts and the score
         let scoreMargin = isMobile ? 15 : 25;
         this.scoreText.setPosition(lastHeartLeftEdge - scoreMargin, topBarHeight / 2);
+
+        // --- NEW: RESIZE BOSS UI IF ACTIVE ---
+        if (this.bossUIContainer && this.bossUIContainer.visible) {
+            this.bossBarWidth = isMobile ? cam.width * 0.8 : cam.width * 0.6;
+            this.bossBarHeight = isMobile ? 6 : 12;
+            let barX = cam.centerX - (this.bossBarWidth / 2);
+
+            // Re-center Background
+            this.bossBarBg.setPosition(barX, this.bossBarBg.y);
+            this.bossBarBg.setSize(this.bossBarWidth, this.bossBarHeight);
+
+            // Re-center and scale Fill
+            let healthPercent = Math.max(0, this.bossHealth / this.bossMaxHealth);
+            this.bossBarFill.setPosition(barX, this.bossBarFill.y);
+            this.bossBarFill.setSize(this.bossBarWidth * healthPercent, this.bossBarHeight);
+
+            // Re-center Text
+            this.bossNameText.setPosition(cam.centerX, this.bossNameText.y);
+            this.bossNameText.setFontSize(isMobile ? '8px' : '12px');
+        }
+
         // --- BOTTOM DIALOGUE BOX SIZING ---
         // Reserve the bottom 15% for the box, with a little padding
         const boxHeight = cam.height * 0.15;
@@ -1173,9 +1201,13 @@ class MainScene extends Phaser.Scene {
         const marginX = (cam.width - boxWidth) / 2;
         const marginY = cam.height - boxHeight - (cam.height * 0.02);
 
-        // Initialize the reusable Dialogue Manager for space!
-        this.dialogue = new DialogueManager(this);
-        this.scale.on('resize', () => this.dialogue.resize(this.cameras.main), this);
+        // --- THE FIX: ONLY INITIALIZE IF IT DOESN'T EXIST YET ---
+        if (!this.dialogue) {
+            this.dialogue = new DialogueManager(this);
+            this.scale.on('resize', () => this.dialogue.resize(this.cameras.main), this);
+        }
+
+        // Always resize it, whether it was just created or already existed
         this.dialogue.resize(this.cameras.main);
     }
 
@@ -1410,24 +1442,28 @@ class MainScene extends Phaser.Scene {
 
         // 2. Wait exactly 2 seconds, then execute the Adblocker wipe!
         this.time.delayedCall(2000, () => {
-
-            const isMobile = this.cameras.main.width < 600;
-
-            // --- FIXED: DEPTH ---
-            // The ads are at depth 200, so setting this to 250 guarantees it pops up ON TOP!
-            let blockerIcon = this.add.image(this.player.x, this.player.y - 40, 'adblocker_icon').setDepth(250);
+            const cam = this.cameras.main;
+            const isMobile = cam.width < 600;
 
             // --- FIXED: SCALING ---
             // Keep it normal size on mobile, but make it 3x larger on desktop
-            blockerIcon.setScale(isMobile ? 1 : 3);
+            let blockerIcon = this.add.image(cam.centerX, cam.centerY, 'adblocker_icon').setDepth(250);
+            blockerIcon.setScale(isMobile ? 1 : 2);
 
-            // --- FIXED: DURATION ---
+            // 1. ANIMATION: Float up quickly with a nice little bounce
             this.tweens.add({
                 targets: blockerIcon,
-                // Move it slightly higher on desktop since the icon is so much bigger
-                y: this.player.y - (isMobile ? 100 : 180),
+                y: cam.centerY - 50,
+                duration: 1000,
+                ease: 'Back.easeOut'
+            });
+
+            // 2. FADE OUT: Wait exactly 1.5 seconds, then fade away!
+            this.tweens.add({
+                targets: blockerIcon,
                 alpha: 0,
-                duration: 2500, // Changed from 1500 to 2500 (1 full second longer!)
+                delay: 2000, // The 1.5-second wait!
+                duration: 500, // Takes half a second to fade out
                 onComplete: () => blockerIcon.destroy()
             });
 
@@ -1479,10 +1515,12 @@ class MainScene extends Phaser.Scene {
             waitForSpacebar: false
         }]);
 
-        // 2. Auto-close the text balloon after 10 seconds
+        // 2. BULLETPROOF AUTO-CLOSE
         this.time.delayedCall(10000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
-                this.dialogue.next();
+                // Forcefully hide the box and clear the message!
+                this.dialogue.uiContainer.setVisible(false);
+                this.dialogue.currentMessage = null;
             }
         });
 
@@ -1501,11 +1539,20 @@ class MainScene extends Phaser.Scene {
             // Make the desktop icon smaller (Scale 2 instead of 3)
             antiPopup.setScale(isMobile ? 1 : 2);
 
+            // 1. ANIMATION: Float up quickly
             this.tweens.add({
                 targets: antiPopup,
-                y: cam.centerY - 50, // Float up slightly from the center of the screen
+                y: cam.centerY - 50,
+                duration: 1000,
+                ease: 'Back.easeOut'
+            });
+
+            // 2. FADE OUT: Wait exactly 1.5 seconds, then fade away!
+            this.tweens.add({
+                targets: antiPopup,
                 alpha: 0,
-                duration: 2500,
+                delay: 2000, // The 1.5-second wait!
+                duration: 500,
                 onComplete: () => antiPopup.destroy()
             });
         });
@@ -1521,49 +1568,60 @@ class MainScene extends Phaser.Scene {
             waitForSpacebar: false
         }]);
 
-        // 2. Auto-close the text balloon after 6 seconds
+        // 2. BULLETPROOF AUTO-CLOSE
         this.time.delayedCall(6000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'James') {
-                this.dialogue.next();
+                this.dialogue.uiContainer.setVisible(false);
+                this.dialogue.currentMessage = null;
             }
         });
 
-        // 3. Wait exactly 3 seconds, THEN apply the shields and show the central pop-up!
+        // 3. Wait exactly 3 seconds, THEN show the pop-up and fly it to the UI!
         this.time.delayedCall(3000, () => {
             this.hasFirewall = true;
-            this.firewallGivenTime = this.time.now; // Start clock for the final wave
+            this.firewallGivenTime = this.time.now;
 
             const cam = this.cameras.main;
             const isMobile = cam.width < 600;
 
-            // --- FIXED: THE CENTRAL POP-UP ---
-            // Reusing your 'blue_shield' image for the big central notification
+            // Spawn the giant pop-up in the center
             let shieldPopup = this.add.image(cam.centerX, cam.centerY, 'blue_shield').setDepth(250);
-
-            // Make the desktop icon smaller (Scale 2 instead of 3)
             shieldPopup.setScale(isMobile ? 1 : 2);
 
+            // --- THE ARC TRAJECTORY MATH ---
+            // Calculate roughly where the top-right UI area is
+            const destX = cam.width - (cam.width * 0.05);
+            const destY = cam.height * 0.08;
+
+            // Shrink down to about 50% of its current size as it flies
+            const targetScale = isMobile ? 0.5 : 1.0;
+
+            // Animate it flying in a curve!
             this.tweens.add({
                 targets: shieldPopup,
-                y: cam.centerY - 50, // Float up slightly from the center of the screen
-                alpha: 0,
-                duration: 2500,
-                onComplete: () => shieldPopup.destroy()
+                x: { value: destX, ease: 'Linear' }, // Move right at a steady pace
+                y: { value: destY, ease: 'Sine.easeOut' }, // Shoot up quickly, then level off (creates the arc!)
+                scale: { value: targetScale, ease: 'Linear' }, // Shrink steadily
+                duration: 1500, // Takes 1.5 seconds to make the trip
+                onComplete: () => {
+                    // 1. Destroy the flying pop-up now that it arrived
+                    shieldPopup.destroy();
+
+                    // 2. --- SPAWN THE 3 UI SHIELDS ---
+                    this.activeShields = 3;
+
+                    for (let i = 0; i < 3; i++) {
+                        let shield = this.add.image(0, 0, 'blue_shield');
+                        shield.setOrigin(1, 0.5);
+
+                        this.shieldIcons.push(shield);
+                        this.uiContainer.add(shield);
+                    }
+
+                    // 3. Force the UI to recalculate so the shields snap perfectly into place!
+                    this.resizeUI();
+                }
             });
-
-            // --- SPAWN THE 3 UI SHIELDS ---
-            this.activeShields = 3;
-
-            for (let i = 0; i < 3; i++) {
-                let shield = this.add.image(0, 0, 'blue_shield');
-                shield.setOrigin(1, 0.5); // Right-aligned just like the hearts!
-
-                this.shieldIcons.push(shield);
-                this.uiContainer.add(shield);
-            }
-
-            // Force the UI to recalculate so the shields snap to the top right immediately!
-            this.resizeUI();
         });
     }
 
@@ -1673,21 +1731,25 @@ class MainScene extends Phaser.Scene {
         // 3. Create the Boss UI (Hidden initially)
         this.bossUIContainer = this.add.container(0, 0).setDepth(105).setAlpha(0);
 
-        // Health Bar Background (Dark Gray)
-        const barWidth = cam.width * 0.6;
-        const barHeight = 12;
-        const barX = cam.centerX - (barWidth / 2);
+        const isMobile = cam.width < 600;
+
+        // --- NEW: DYNAMIC HEALTH BAR SIZING ---
+        // Save these to the class so other methods can read them when taking damage!
+        this.bossBarWidth = isMobile ? cam.width * 0.8 : cam.width * 0.6; // 80% width on mobile, 60% on desktop
+        this.bossBarHeight = isMobile ? 6 : 12; // Half as thick on mobile!
+
+        const barX = cam.centerX - (this.bossBarWidth / 2);
         const barY = cam.height * 0.08; // Just below the top bar
 
-        this.bossBarBg = this.add.rectangle(barX, barY, barWidth, barHeight, 0x333333).setOrigin(0, 0).setStrokeStyle(1, 0x000000);
+        this.bossBarBg = this.add.rectangle(barX, barY, this.bossBarWidth, this.bossBarHeight, 0x333333).setOrigin(0, 0).setStrokeStyle(1, 0x000000);
 
         // Health Bar Fill (Red)
-        this.bossBarFill = this.add.rectangle(barX, barY, barWidth, barHeight, 0xff0000).setOrigin(0, 0);
+        this.bossBarFill = this.add.rectangle(barX, barY, this.bossBarWidth, this.bossBarHeight, 0xff0000).setOrigin(0, 0);
 
         // Boss Name Text
-        this.bossNameText = this.add.text(cam.centerX, barY + barHeight + 4, "Final Wild AI Superboss XL", {
+        this.bossNameText = this.add.text(cam.centerX, barY + this.bossBarHeight + (isMobile ? 2 : 4), "Final Wild AI Superboss XL", {
             fontFamily: '"Press Start 2P", Courier, monospace',
-            fontSize: '12px',
+            fontSize: isMobile ? '8px' : '12px', // Smaller font on mobile!
             color: '#ff4444',
             fontStyle: 'bold'
         }).setOrigin(0.5, 0);
@@ -1731,11 +1793,11 @@ class MainScene extends Phaser.Scene {
     }
 
     startBossAttacks() {
-        // Clear the old timer just in case we are restarting attacks for Phase 2
         if (this.bossShootTimer) this.bossShootTimer.remove();
 
-        // Speed up the fire rate in Phase 2 (from 800ms down to 600ms)
-        let currentDelay = this.phase2Triggered ? 600 : 800;
+        // --- UPGRADE: FASTER FIRE RATE ---
+        // 500ms in Phase 1, 350ms in Phase 2
+        let currentDelay = this.phase2Triggered ? 550 : 550;
 
         this.bossShootTimer = this.time.addEvent({
             delay: currentDelay,
@@ -1743,24 +1805,29 @@ class MainScene extends Phaser.Scene {
                 if (!this.bossActive) return;
 
                 if (this.phase2Triggered) {
-                    // PHASE 2: Dual purple lasers that track faster!
-                    let laser1 = this.bossLasers.get(this.boss.x - 40, this.boss.y + 50);
-                    let laser2 = this.bossLasers.get(this.boss.x + 40, this.boss.y + 50);
+                    // PHASE 2: Dual purple lasers from either side!
+                    // Dynamically calculate the sides based on the boss's scaled width
+                    let sideOffset = (this.boss.displayWidth / 2) * 0.8;
+
+                    let laser1 = this.bossLasers.get(this.boss.x - sideOffset, this.boss.y + 20);
+                    let laser2 = this.bossLasers.get(this.boss.x + sideOffset, this.boss.y + 20);
 
                     if (laser1) {
-                        laser1.setActive(true).setVisible(true).setTint(0xff00ff); // Magenta!
-                        this.physics.moveToObject(laser1, this.player, 550); // 550 speed!
+                        // Apply mobile scaling to the lasers!
+                        laser1.setActive(true).setVisible(true).setTint(0xff00ff).setScale(this.entityScale);
+                        this.physics.moveToObject(laser1, this.player, 550);
                     }
                     if (laser2) {
-                        laser2.setActive(true).setVisible(true).setTint(0xff00ff);
+                        laser2.setActive(true).setVisible(true).setTint(0xff00ff).setScale(this.entityScale);
                         this.physics.moveToObject(laser2, this.player, 550);
                     }
                 } else {
                     // PHASE 1: Standard single orange laser
-                    let laser = this.bossLasers.get(this.boss.x, this.boss.y + 75);
+                    let laser = this.bossLasers.get(this.boss.x, this.boss.y + 50);
                     if (laser) {
-                        laser.setActive(true).setVisible(true).clearTint();
-                        this.physics.moveToObject(laser, this.player, 400); // 400 speed
+                        // Apply mobile scaling to the lasers!
+                        laser.setActive(true).setVisible(true).clearTint().setScale(this.entityScale);
+                        this.physics.moveToObject(laser, this.player, 400);
                     }
                 }
             },
@@ -1772,22 +1839,34 @@ class MainScene extends Phaser.Scene {
     hitBoss(object1, object2) {
         if (!this.bossActive) return;
 
-        if (this.bossShielded) return; // NEW: Bullets do nothing to the shield!
-
-        // 1. Fool-proof check: Figure out exactly which item is the laser and which is the boss
         let laser = (object1.texture && object1.texture.key === 'laser') ? object1 : object2;
         let boss = (object1.texture && object1.texture.key === 'boss') ? object1 : object2;
 
-        // Destroy the laser safely
+        // --- NEW: SHIELD BLOCKS AND DESTROYS LASERS ---
+        if (this.bossShielded) {
+            if (laser && laser.active) {
+                laser.destroy(); // Break the laser!
+
+                // Flash the shield bright white for a split second to show impact
+                if (this.bossShieldVisual) {
+                    this.bossShieldVisual.setAlpha(0.4);
+                    this.time.delayedCall(50, () => {
+                        if (this.bossShieldVisual) this.bossShieldVisual.setAlpha(1);
+                    });
+                }
+            }
+            return; // Exit early so the boss takes no damage!
+        }
+
+        // ... (Keep the rest of your hitBoss logic exactly the same below this) ...
         if (laser && laser.active) {
             laser.destroy();
         }
 
         this.bossHealth -= 1;
 
-        // 2. Safe Visual Flash (Using Tint and Alpha instead of TintFill)
-        boss.setTint(0xffaaaa); // Tint it slightly red/white
-        boss.setAlpha(0.7);     // Make it slightly transparent
+        boss.setTint(0xffaaaa);
+        boss.setAlpha(0.7);
 
         this.time.delayedCall(50, () => {
             if (boss && boss.active) {
@@ -1796,27 +1875,43 @@ class MainScene extends Phaser.Scene {
             }
         });
 
-        // 3. Update the Health Bar width
         const healthPercent = Math.max(0, this.bossHealth / this.bossMaxHealth);
-        const barWidth = this.cameras.main.width * 0.6;
-        this.bossBarFill.setSize(barWidth * healthPercent, 10);
 
-        // NEW: Check for Phase 2 Trigger (90% Health)
-        if (!this.phase2Triggered && this.bossHealth <= (this.bossMaxHealth * 0.90)) {
+        // --- FIXED: USE DYNAMIC WIDTH AND HEIGHT ---
+        this.bossBarFill.setSize(this.bossBarWidth * healthPercent, this.bossBarHeight);
+
+        // --- UPGRADE: TRIGGER PHASE 2 AT 5% HEALTH ---
+        if (!this.phase2Triggered && this.bossHealth <= (this.bossMaxHealth * 0.05)) {
             this.triggerBossPhase2();
         }
 
-        // 4. Defeat Check
         if (this.bossHealth <= 0) {
-            this.bossActive = false; // Stops boss logic
+            this.bossActive = false;
 
             if (this.bossShootTimer) this.bossShootTimer.remove();
-            if (this.helperShootTimer) this.helperShootTimer.remove(); // Stop helpers from shooting empty space
+            if (this.helperShootTimer) this.helperShootTimer.remove();
 
-            this.tweens.killTweensOf(this.boss); // Stop the boss from sliding left/right
-            this.bossUIContainer.setVisible(false); // Hide the health bar immediately
+            this.tweens.killTweensOf(this.boss);
+            this.bossUIContainer.setVisible(false);
 
-            this.triggerDefeatSequence(); // START THE FINALE!
+            this.triggerDefeatSequence();
+        }
+    }
+
+    hitShield(shieldZone, laser) {
+        if (!this.bossShielded) return;
+
+        // Destroy the laser exactly where it touches the shield radius!
+        if (laser && laser.active) {
+            laser.destroy();
+
+            // Flash the visual arc to show impact
+            if (this.bossShieldVisual) {
+                this.bossShieldVisual.setAlpha(0.4);
+                this.time.delayedCall(50, () => {
+                    if (this.bossShieldVisual) this.bossShieldVisual.setAlpha(1);
+                });
+            }
         }
     }
 
@@ -1831,14 +1926,48 @@ class MainScene extends Phaser.Scene {
 
     triggerBossPhase2() {
         this.phase2Triggered = true;
-        this.bossActive = false; // Boss stops shooting
-        this.bossShielded = true; // Boss stops taking damage
+        this.bossActive = false;
+        this.bossShielded = true;
 
-        if (this.bossShootTimer) this.bossShootTimer.remove(); // Stop the lasers
+        if (this.bossShootTimer) this.bossShootTimer.remove();
 
-        // 1. Draw a glowing cyan shield around the Boss
-        this.bossShieldVisual = this.add.circle(this.boss.x, this.boss.y, 120, 0x00ffff, 0.2).setDepth(6);
-        this.bossShieldVisual.setStrokeStyle(4, 0x00ffff, 0.8);
+        // --- UPGRADE: CURVED SHIELD ---
+        this.bossShieldVisual = this.add.graphics().setDepth(6);
+        this.bossShieldVisual.lineStyle(8, 0x00ffff, 0.9); // 8px thick glowing cyan line
+        this.bossShieldVisual.beginPath();
+
+        // Draw an arc spanning the bottom of the boss (from 45 degrees to 135 degrees)
+        let shieldRadius = (this.boss.displayWidth / 2) + 80;
+        this.bossShieldVisual.arc(0, 0, shieldRadius, Phaser.Math.DegToRad(30), Phaser.Math.DegToRad(150), false);
+        this.bossShieldVisual.strokePath();
+
+        // Anchor the graphic to the boss's position
+        this.bossShieldVisual.setPosition(this.boss.x, this.boss.y);
+
+        // --- NEW: INVISIBLE PHYSICS SHIELD ZONE ---
+        // Create an invisible physics zone that is exactly the size of the shield radius
+        this.bossShieldZone = this.add.zone(this.boss.x, this.boss.y, shieldRadius * 2, shieldRadius * 2);
+        this.physics.add.existing(this.bossShieldZone);
+        this.bossShieldZone.body.setCircle(shieldRadius);
+
+        // Tell the physics engine: If a laser touches this zone, run the hitShield function!
+        this.physics.add.overlap(this.lasers, this.bossShieldZone, this.hitShield, null, this);
+
+        // --- UPGRADE: REGENERATE HEALTH BAR ---
+        // Slowly fill the health bar back to 100% over 5 seconds while they talk
+        this.tweens.addCounter({
+            from: this.bossHealth,
+            to: this.bossMaxHealth,
+            duration: 15000,
+            ease: 'Sine.easeInOut',
+            onUpdate: (tween) => {
+                this.bossHealth = tween.getValue();
+                const healthPercent = Math.max(0, this.bossHealth / this.bossMaxHealth);
+
+                // --- FIXED: USE DYNAMIC SIZING ---
+                this.bossBarFill.setSize(this.bossBarWidth * healthPercent, this.bossBarHeight);
+            }
+        });
 
         // 2. Trigger the HQ Dialogue
         this.dialogue.startDialogue([{
@@ -1847,21 +1976,23 @@ class MainScene extends Phaser.Scene {
             waitForSpacebar: false
         }]);
 
-        // 3. Wait 12 seconds, clear dialogue, and bring in the helper ships!
+        // 3. Wait 6 seconds, clear dialogue, and bring in the helper ships!
         this.time.delayedCall(6000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
 
-            // Spawn helpers at the bottom edge of the screen as Sprites
             const cam = this.cameras.main;
-            let helperBlue = this.add.sprite(cam.width * 0.3, cam.height + 50, 'Helper ship blue boost').setDepth(9);
-            let helperPurple = this.add.sprite(cam.width * 0.7, cam.height + 50, 'Helper ship purple boost').setDepth(9);
 
-            // Store them so we can make them shoot later!
+            // --- UPGRADE: SCALE THE HELPER SHIPS FOR MOBILE ---
+            let helperBlue = this.add.sprite(cam.width * 0.3, cam.height + 50, 'Helper ship blue boost').setDepth(9);
+            helperBlue.setScale(this.entityScale);
+
+            let helperPurple = this.add.sprite(cam.width * 0.7, cam.height + 50, 'Helper ship purple boost').setDepth(9);
+            helperPurple.setScale(this.entityScale);
+
             this.helperShips = [helperBlue, helperPurple];
 
-            // Animate them sliding up into the battlefield
             this.tweens.add({
                 targets: this.helperShips,
                 y: cam.height * 0.75,
@@ -1869,25 +2000,22 @@ class MainScene extends Phaser.Scene {
                 ease: 'Sine.easeOut',
                 onComplete: () => {
 
-                    // NEW: Add a continuous hovering animation so they look alive!
                     this.tweens.add({
                         targets: this.helperShips,
-                        x: '+=60', // Drift right by 60 pixels
+                        x: '+=60',
                         duration: 2000,
-                        yoyo: true, // Drift back left
-                        repeat: -1, // Loop forever
+                        yoyo: true,
+                        repeat: -1,
                         ease: 'Sine.easeInOut'
                     });
 
-                    // 4. Helper Ships arrive, trigger their dialogue
                     this.dialogue.startDialogue([{
                         character: 'Stijn_spacesuit',
-                        character2: 'James_spacesuit', // NEW: The second portrait!
+                        character2: 'James_spacesuit',
                         text: "We have stronger blasters and more powerful thrusters for your spaceship! And of course are we here to help!",
                         waitForSpacebar: false
                     }]);
 
-                    // 5. Wait 6 seconds, grant upgrades, and RESUME FIGHT!
                     this.time.delayedCall(5000, () => {
                         if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Stijn_spacesuit') {
                             this.dialogue.next();
@@ -1895,42 +2023,52 @@ class MainScene extends Phaser.Scene {
 
                         // APPLY UPGRADES!
                         this.player.setTexture('player ship upgraded');
-                        // --- NEW: TELL THE GAME TO USE UPGRADED BOOSTERS ---
                         this.isShipUpgraded = true;
                         this.playerSpeed = 500;
                         this.hasDoubleLaser = true;
 
                         // DROP BOSS SHIELD
                         this.bossShieldVisual.destroy();
+                        if (this.bossShieldZone) this.bossShieldZone.destroy(); // Destroy the physics hitbox!
                         this.bossShielded = false;
 
                         // RESUME BOSS ATTACKS
                         this.bossActive = true;
                         this.startBossAttacks();
 
-                        // UPGRADE: Make the boss slowly drift left and right!
+                        // --- FIXED: PERFECTLY CENTERED BOSS DRIFT ---
+                        // Instead of hardcoding 150 pixels, move 25% of the screen width!
+                        let driftDistance = cam.width * 0.25;
+
+                        // 1. Swing to the left first to start the momentum
                         this.tweens.add({
                             targets: this.boss,
-                            x: this.cameras.main.centerX + 150, // Drift right by 150 pixels
-                            duration: 2500, // Takes 2.5 seconds to drift one way
-                            yoyo: true, // Drift back to the left
-                            repeat: -1, // Loop forever
-                            ease: 'Sine.easeInOut'
+                            x: cam.centerX - driftDistance,
+                            duration: 1250,
+                            ease: 'Sine.easeInOut',
+                            onComplete: () => {
+                                // 2. Now swing all the way across to the right, and back forever!
+                                this.tweens.add({
+                                    targets: this.boss,
+                                    x: cam.centerX + driftDistance,
+                                    duration: 2500,
+                                    yoyo: true,
+                                    repeat: -1,
+                                    ease: 'Sine.easeInOut'
+                                });
+                            }
                         });
 
-                        // NEW: START HELPER ATTACKS! (They shoot very slowly)
                         this.helperShootTimer = this.time.addEvent({
-                            delay: 2500, // Shoots once every 2.5 seconds
+                            delay: 2500,
                             callback: () => {
                                 if (!this.bossActive || this.bossShielded) return;
 
                                 this.helperShips.forEach(ship => {
                                     let laser = this.lasers.get(ship.x, ship.y - 20);
                                     if (laser) {
-                                        laser.setActive(true).setVisible(true);
-                                        laser.setTint(0x00ffff);
-
-                                        // UPGRADE: Aim directly at the boss instead of just shooting straight up!
+                                        // Apply mobile scaling to helper lasers too!
+                                        laser.setActive(true).setVisible(true).setScale(this.entityScale).setTint(0x00ffff);
                                         this.physics.moveToObject(laser, this.boss, 400);
                                     }
                                 });
@@ -1938,7 +2076,6 @@ class MainScene extends Phaser.Scene {
                             callbackScope: this,
                             loop: true
                         });
-
                     });
                 }
             });
@@ -1948,6 +2085,9 @@ class MainScene extends Phaser.Scene {
     triggerDefeatSequence() {
         this.currentPhase = 99; // Set this early to disable player controls
         this.input.keyboard.enabled = false;
+
+        // --- NEW: FORCE BOOSTERS ON FOR THE CUTSCENE ---
+        this.player.setTexture(this.isShipUpgraded ? 'player ship upgraded boost' : 'player ship boost');
 
         // NEW: Auto-pilot the player into a perfect V-formation!
         const cam = this.cameras.main;
@@ -2334,19 +2474,32 @@ class MainScene extends Phaser.Scene {
             }
         }
         // --- NEW: DYNAMIC BOOSTER TEXTURES ---
-        if (isMoving) {
-            if (this.isShipUpgraded) {
-                this.player.setTexture('player ship upgraded boost');
-            } else {
-                this.player.setTexture('player ship boost');
+        // ONLY update textures based on input if we are NOT in the finale!
+        if (this.currentPhase !== 99) {
+            if (isMoving) {
+                if (this.isShipUpgraded) {
+                    this.player.setTexture('player ship upgraded boost');
+                } else {
+                    this.player.setTexture('player ship boost');
+                }
+            }
+            else {
+                if (this.isShipUpgraded) {
+                    this.player.setTexture('player ship upgraded');
+                } else {
+                    this.player.setTexture('player ship');
+                }
             }
         }
-        // If the ship is standing still, turn the boosters off!
-        else {
-            if (this.isShipUpgraded) {
-                this.player.setTexture('player ship upgraded');
-            } else {
-                this.player.setTexture('player ship');
+
+        // --- NEW: KEEP BOSS SHIELD ATTACHED ---
+        // Because the boss drifts left and right, the shield graphic and physics zone need to follow it!
+        if (this.bossShielded && this.bossShieldVisual && this.boss) {
+            this.bossShieldVisual.setPosition(this.boss.x, this.boss.y);
+
+            // Move the invisible physics hitbox too!
+            if (this.bossShieldZone) {
+                this.bossShieldZone.setPosition(this.boss.x, this.boss.y);
             }
         }
 
