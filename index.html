@@ -5,15 +5,9 @@
 <style>
     /* ... (Keep your existing body and game-container CSS) ... */
 
-    .brand {
-        font-size: 12px;
-        margin-bottom: 20px;
-        color: #ffffff;
-    }
-
     .game-title {
         font-size: 48px;
-        color: #ffcc00;
+        color: #ffffff;
         /* Yellow text */
         text-shadow: 4px 4px 0px #aa00ff;
         /* 3D purple shadow effect */
@@ -107,7 +101,7 @@
             /* 100px top margin + 150px bottom margin = 250px total space removed */
             height: calc(100% - 250px) !important;
 
-            width: calc(100% - 32px) !important;
+            width: calc(100% - 8px) !important;
             /* Maintains the 16px side margins */
         }
     }
@@ -124,10 +118,8 @@
 <body>
     <div id="start-screen">
         <div class="content-wrapper">
-            <p class="brand">RetroVibe</p>
             <h1 class="game-title">FUTURE READY</h1>
             <h2 class="game-subtitle">The Game</h2>
-            <p class="mission-text">Protect Earth<br>from the wild<br>super space computers</p>
 
             <button id="play-button">PLAY GAME</button>
         </div>

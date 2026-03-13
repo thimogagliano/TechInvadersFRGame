@@ -16,10 +16,10 @@ body {
     position: absolute;
     top: 16px;
     /* 16px margin from the top */
-    height: calc(100% - 32px);
+    height: calc(100%);
     /* Leaves exactly 16px margin at the bottom */
 
-    width: calc(100% - 32px);
+    width: calc(100%);
     /* 16px margin on the left/right on smaller screens */
     max-width: 1200px;
     /* Caps the width at 1200px on large monitors! */
@@ -46,7 +46,7 @@ body {
 }
 
 #name-input-screen {
-    background-color: rgba(0, 0, 0, 0.85);
+    background-color: transparent !important;
     /* Dark semi-transparent background */
     display: flex;
     justify-content: center;
