@@ -7,7 +7,7 @@ class TitleScene extends Phaser.Scene {
     preload() {
         // --- 1. LOAD YOUR ASSETS ---
         // Replace 'assets/TitleBg.png' with your actual background file!
-        this.load.image('Titlescreen background', 'assets/TitlescreenBackground.png');
+        this.load.image('Titlescreen background', 'assets/TitlescreenBackground2.png');
 
         // Load the ships we want to use as ambient flying objects
         this.load.image('Player ship', 'assets/SchipSpelerBooster.png');
@@ -34,7 +34,7 @@ class TitleScene extends Phaser.Scene {
         this.flyingObjects = this.physics.add.group();
 
         // --- NEW: DRAW THE ARCADE CABINET BORDER ---
-        this.drawArcadeBorder();
+        // this.drawArcadeBorder();
 
         // --- 4. CREATE THE SPAWNER TIMER ---
         this.time.addEvent({
@@ -49,7 +49,7 @@ class TitleScene extends Phaser.Scene {
             this.scaleBackgroundToCover(this.bg);
 
             // --- NEW: REDRAW THE BORDER IF THE SCREEN CHANGES SIZE ---
-            this.drawArcadeBorder();
+            // this.drawArcadeBorder();
         }, this);
 
         // Cleanup listeners
@@ -135,51 +135,51 @@ class TitleScene extends Phaser.Scene {
         flyingObj.setAlpha(Phaser.Math.FloatBetween(0.7, 1));
     }
 
-    drawArcadeBorder() {
-        const cam = this.cameras.main;
+    // drawArcadeBorder() {
+    //     const cam = this.cameras.main;
 
-        // If the border already exists (like during a window resize), clear it out first!
-        if (this.arcadeBorder) {
-            this.arcadeBorder.clear();
-        } else {
-            // Create the graphics object on the very top layer (Depth 100)
-            this.arcadeBorder = this.add.graphics().setDepth(100);
-        }
+    //     // If the border already exists (like during a window resize), clear it out first!
+    //     if (this.arcadeBorder) {
+    //         this.arcadeBorder.clear();
+    //     } else {
+    //         // Create the graphics object on the very top layer (Depth 100)
+    //         this.arcadeBorder = this.add.graphics().setDepth(100);
+    //     }
 
-        // Determine how thick the arcade cabinet plastic should be
-        const isMobile = cam.width < 600;
-        const thickness = isMobile ? 6 : 30;
+    //     // Determine how thick the arcade cabinet plastic should be
+    //     const isMobile = cam.width < 600;
+    //     const thickness = isMobile ? 6 : 30;
 
-        // --- 1. DRAW THE THICK BLACK/DARK GREY OUTER CABINET ---
-        this.arcadeBorder.fillStyle(0x1a1a1a, 1); // Dark charcoal grey
+    //     // --- 1. DRAW THE THICK BLACK/DARK GREY OUTER CABINET ---
+    //     this.arcadeBorder.fillStyle(0x1a1a1a, 1); // Dark charcoal grey
 
-        // Draw the 4 walls of the border
-        this.arcadeBorder.fillRect(0, 0, cam.width, thickness); // Top
-        this.arcadeBorder.fillRect(0, cam.height - thickness, cam.width, thickness); // Bottom
-        this.arcadeBorder.fillRect(0, 0, thickness, cam.height); // Left
-        this.arcadeBorder.fillRect(cam.width - thickness, 0, thickness, cam.height); // Right
+    //     // Draw the 4 walls of the border
+    //     this.arcadeBorder.fillRect(0, 0, cam.width, thickness); // Top
+    //     this.arcadeBorder.fillRect(0, cam.height - thickness, cam.width, thickness); // Bottom
+    //     this.arcadeBorder.fillRect(0, 0, thickness, cam.height); // Left
+    //     this.arcadeBorder.fillRect(cam.width - thickness, 0, thickness, cam.height); // Right
 
-        // --- 2. DRAW THE NEON INNER ACCENT LINE ---
-        // This gives it that classic 80s/90s arcade machine screen glow
-        this.arcadeBorder.lineStyle(4, 0x00ffff, 0.8); // 4px thick, Cyan color, 80% opacity
+    //     // --- 2. DRAW THE NEON INNER ACCENT LINE ---
+    //     // This gives it that classic 80s/90s arcade machine screen glow
+    //     this.arcadeBorder.lineStyle(4, 0x00ffff, 0.8); // 4px thick, Cyan color, 80% opacity
 
-        // Draw the stroke exactly inside the thick walls
-        this.arcadeBorder.strokeRect(
-            thickness,
-            thickness,
-            cam.width - (thickness * 2),
-            cam.height - (thickness * 2)
-        );
+    //     // Draw the stroke exactly inside the thick walls
+    //     this.arcadeBorder.strokeRect(
+    //         thickness,
+    //         thickness,
+    //         cam.width - (thickness * 2),
+    //         cam.height - (thickness * 2)
+    //     );
 
-        // Optional: Add a second, thinner inner line for detail
-        this.arcadeBorder.lineStyle(1, 0xff00ff, 0.5); // Thin magenta line
-        this.arcadeBorder.strokeRect(
-            thickness + 6,
-            thickness + 6,
-            cam.width - (thickness * 2) - 12,
-            cam.height - (thickness * 2) - 12
-        );
-    }
+    //     // Optional: Add a second, thinner inner line for detail
+    //     this.arcadeBorder.lineStyle(1, 0xff00ff, 0.5); // Thin magenta line
+    //     this.arcadeBorder.strokeRect(
+    //         thickness + 6,
+    //         thickness + 6,
+    //         cam.width - (thickness * 2) - 12,
+    //         cam.height - (thickness * 2) - 12
+    //     );
+    // }
 
     update() {
         const cam = this.cameras.main;
@@ -245,23 +245,34 @@ class DialogueManager {
     }
 
     resize(cam) {
-        const isMobile = cam.width < 600;
+        this.isMobile = cam.width < 600;
 
-        // Save margins and box heights for when we draw the bubble
-        this.marginX = cam.width * 0.05;
+        this.marginX = this.isMobile ? cam.width * 0.02 : cam.width * 0.05;
         this.marginY = cam.height * 0.02;
-        this.boxHeight = cam.height * 0.15;
-
-        // --- 2. FIX: LOCK PORTRAIT HEIGHT ---
-        // We ensure the image is just slightly taller than the dialogue box itself (1.1x)
+        this.boxHeight = this.isMobile ? cam.height * 0.18 : cam.height * 0.15;
         this.targetPortraitHeight = this.boxHeight * 1.1;
 
-        const dynamicFontSize = isMobile ? 8 : 12;
+        this.uiContainer.setPosition(0, 0);
+
+        // --- NEW: DYNAMIC FONT FAMILIES ---
+        // Keep the retro font for desktop, but use clean, readable Verdana for mobile
+        const mobileFont = 'Verdana, Arial, sans-serif';
+        const desktopFont = '"Press Start 2P", Courier, monospace';
+
+        this.dialogText.setFontFamily(this.isMobile ? mobileFont : desktopFont);
+        this.hintText.setFontFamily(this.isMobile ? mobileFont : desktopFont);
+
+        // --- NEW: DYNAMIC FONT SIZES ---
+        // Because Verdana is so thin, we can safely use 12px on mobile and it will 
+        // STILL take up less room than your 10px retro font!
+        const dynamicFontSize = this.isMobile ? 12 : 12;
+
         this.dialogText.setFontSize(dynamicFontSize + 'px');
-        this.dialogText.setLineSpacing(isMobile ? 4 : 8);
+
+        // Add slightly more line spacing on mobile for readability
+        this.dialogText.setLineSpacing(this.isMobile ? 6 : 8);
         this.hintText.setFontSize((dynamicFontSize - 2) + 'px');
 
-        // If a message is currently open, dynamically redraw it to match the new size
         if (this.currentMessage) {
             this.layoutDynamicUI();
             this.drawBubble(this.currentBoxWidth);
@@ -271,21 +282,19 @@ class DialogueManager {
     // --- NEW: A helper function that dynamically calculates layout based on current art ---
     layoutDynamicUI() {
         const cam = this.scene.cameras.main;
-        const gap = 20;
+
+        // Shrink the gap between the character portrait and the speech bubble on mobile
+        const gap = this.isMobile ? 8 : 20;
 
         // --- LEFT PORTRAIT ---
         if (this.currentMessage.character) {
             this.portrait.setTexture(this.currentMessage.character);
-
-            // Proportional Scaling: Set the height, and let the width auto-adjust!
             this.portrait.displayHeight = this.targetPortraitHeight;
             this.portrait.scaleX = this.portrait.scaleY;
-
             this.portrait.setPosition(this.marginX, cam.height - this.marginY);
         }
 
         // --- SPEECH BUBBLE STARTING POINT ---
-        // Pushes the box precisely next to however wide your custom art is
         this.boxX = this.marginX + this.portrait.displayWidth + gap;
         this.boxY = cam.height - this.boxHeight - this.marginY;
 
@@ -293,7 +302,6 @@ class DialogueManager {
         if (this.currentMessage.character2) {
             this.portraitSecondary.setTexture(this.currentMessage.character2);
             this.portraitSecondary.setVisible(true);
-
             this.portraitSecondary.displayHeight = this.targetPortraitHeight;
             this.portraitSecondary.scaleX = this.portraitSecondary.scaleY;
             this.portraitSecondary.setPosition(cam.width - this.marginX, cam.height - this.marginY);
@@ -304,18 +312,31 @@ class DialogueManager {
             this.currentBoxWidth = cam.width - this.marginX - this.boxX;
         }
 
-        // Update Text Positions
-        this.dialogText.setPosition(this.boxX + 20, this.boxY + 20);
-        this.dialogText.setWordWrapWidth(this.currentBoxWidth - 40, true);
-        this.hintText.setPosition(this.boxX + this.currentBoxWidth - 15, this.boxY + this.boxHeight - 10);
+        // --- FIX: TEXT PADDING ---
+        // Use 10px padding on mobile to maximize room, and 20px on desktop
+        const padX = this.isMobile ? 6 : 20;
+        const padY = this.isMobile ? 6 : 20;
+
+        // Update Text Positions with the new padding
+        this.dialogText.setPosition(this.boxX + padX, this.boxY + padY);
+        this.dialogText.setWordWrapWidth(this.currentBoxWidth - (padX * 2), true);
+
+        // Tuck the hint text cleanly into the bottom right corner
+        this.hintText.setPosition(this.boxX + this.currentBoxWidth - padX, this.boxY + this.boxHeight - 5);
     }
 
     drawBubble(width) {
         this.bubbleGraphics.clear();
-        this.bubbleGraphics.lineStyle(4, 0x000000, 1);
+
+        // --- FIX: BORDER THICKNESS ---
+        // Force the thickness to 3px on mobile and 4px on desktop so it never shrinks away!
+        const borderThickness = this.isMobile ? 3 : 4;
+
+        this.bubbleGraphics.lineStyle(borderThickness, 0x000000, 1);
         this.bubbleGraphics.fillStyle(0xffffff, 1);
 
-        const tailTipX = this.boxX - 25;
+        // Adjust the tail to be slightly smaller on mobile
+        const tailTipX = this.boxX - (this.isMobile ? 15 : 25);
         const tailTipY = this.boxY + this.boxHeight - 40;
         const tailTopY = this.boxY + this.boxHeight - 70;
         const tailBottomY = this.boxY + this.boxHeight - 30;
@@ -328,8 +349,8 @@ class DialogueManager {
         this.bubbleGraphics.fillRoundedRect(this.boxX, this.boxY, width, this.boxHeight, 8);
         this.bubbleGraphics.strokeRoundedRect(this.boxX, this.boxY, width, this.boxHeight, 8);
 
-        // Seam hiding trick
-        this.bubbleGraphics.lineStyle(6, 0xffffff, 1,);
+        // Seam hiding trick (Must be slightly thicker than the black border to cover it!)
+        this.bubbleGraphics.lineStyle(borderThickness + 2, 0xffffff, 1);
         this.bubbleGraphics.beginPath();
         this.bubbleGraphics.moveTo(this.boxX, tailTopY + 6);
         this.bubbleGraphics.lineTo(this.boxX, tailBottomY - 3);
@@ -530,6 +551,11 @@ class OfficeScene extends Phaser.Scene {
 
         this.input.keyboard.enabled = false;
 
+        // --- NEW: DRAW THE DARK OVERLAY INSIDE PHASER ---
+        const cam = this.cameras.main;
+        // Depth 999 is just below the Dialogue box (Depth 1000)
+        this.dimOverlay = this.add.rectangle(cam.centerX, cam.centerY, cam.width, cam.height, 0x000000, 0.7).setDepth(999);
+
         inputField.value = "";
         inputField.disabled = false;
         submitBtn.disabled = false;
@@ -538,7 +564,11 @@ class OfficeScene extends Phaser.Scene {
         inputScreen.style.display = 'flex';
         inputField.focus();
 
-        this.dialogue.startDialogue([{ character: 'Robbin', text: "You can type your name in the field we have made!", waitForSpacebar: false }]);
+        this.dialogue.startDialogue([{
+            character: 'Robbin',
+            text: "You can type your name in the field we have made!",
+            waitForSpacebar: false
+        }]);
 
         const badWords = ['badword1', 'swearword2', 'offensiveword3'];
 
@@ -573,6 +603,11 @@ class OfficeScene extends Phaser.Scene {
                 inputField.disabled = false;
                 inputField.focus();
                 return;
+            }
+
+            // --- NEW: DESTROY THE DIM OVERLAY WHEN DONE ---
+            if (this.dimOverlay) {
+                this.dimOverlay.destroy();
             }
 
             inputScreen.style.display = 'none';
@@ -651,7 +686,7 @@ class OfficeScene extends Phaser.Scene {
         // 4. Start Dialogue
         this.dialogue.startDialogue([{
             character: 'Robbin',
-            text: "This is our new hightech spaceship ready to be launched and tested against everything the future has to offer!",
+            text: "This is our new hightech spaceship that we just built for you! It is ready to be launched and tested against everything the future has to offer!",
             waitForSpacebar: true
         }], () => {
 
@@ -710,8 +745,8 @@ class MainScene extends Phaser.Scene {
         this.gameplayStartTime = 0;
 
         // NEW: Firewall Variables
-        this.hasFirewall = false;
-        this.firewallHits = 0;
+        this.activeShields = 0;
+        this.shieldIcons = [];
 
         // NEW: Virus and Antivirus Variables
         this.controlsReversed = false;
@@ -746,9 +781,9 @@ class MainScene extends Phaser.Scene {
         this.load.image('Space background', 'assets/SpaceBg.png');
         // --- NEW: MAIN ACTORS ---
         this.load.image('player ship', 'assets/SchipSpeler.png'); // Your starting ship
-        this.load.image('player ship upgraded', 'assets/SchipSpelerUpgraded.png'); // Phase 2 upgraded ship
+        this.load.image('player ship upgraded', 'assets/SchipSpelerUpgraded2.png'); // Phase 2 upgraded ship
         this.load.image('player ship boost', 'assets/SchipSpelerBooster.png');
-        this.load.image('player ship upgraded boost', 'assets/SchipSpelerUpgradedBooster.png');
+        this.load.image('player ship upgraded boost', 'assets/SchipSpelerUpgradedBooster2.png');
         this.load.image('Helper ship blue', 'assets/HelperShipBlue.png');
         this.load.image('Helper ship blue boost', 'assets/HelperShipBlueBooster.png');
         this.load.image('Helper ship purple', 'assets/HelperShipPurple.png');
@@ -770,6 +805,8 @@ class MainScene extends Phaser.Scene {
         this.load.image('ad_3', 'assets/BestWebsitesAd.png');
 
         this.load.image('adblocker_icon', 'assets/adblocker_icon.png');
+        this.load.image('antivirus_popup', 'assets/Antivirus.png');
+        this.load.image('blue_shield', 'assets/Shield.png');
 
         this.load.image('Robbin', 'assets/Robbin.png');
         this.load.image('Robbin_comms', 'assets/Robbin_comms.png'); // Maybe a holographic version?
@@ -777,6 +814,8 @@ class MainScene extends Phaser.Scene {
         this.load.image('James_spacesuit', 'assets/James_spacesuit.png');
         this.load.image('Stijn', 'assets/Stijn.png');
         this.load.image('Stijn_spacesuit', 'assets/Stijn_spacesuit.png');
+
+
     }
 
     create() {
@@ -796,30 +835,10 @@ class MainScene extends Phaser.Scene {
         let gfx = this.make.graphics({ x: 0, y: 0, add: false });
 
         // Laser (Yellow Rectangle)
-        gfx.fillStyle(0xffff00, 1);
+        gfx.fillStyle(0x17F0E6, 1);
         gfx.fillRect(0, 0, 4, 16);
         gfx.generateTexture('laser', 4, 16);
         gfx.clear();
-
-        // NEW: Antivirus Rounded Square (Green Transparent)
-        gfx.fillStyle(0x00ff00, 0.3); // 30% opacity green
-        gfx.fillRoundedRect(0, 0, 44, 44, 8); // 8px rounded corners
-        gfx.lineStyle(2, 0x00ff00, 1); // Solid green border
-        gfx.strokeRoundedRect(0, 0, 44, 44, 8);
-        gfx.generateTexture('antivirus_aura', 44, 44);
-        gfx.clear();
-
-        // NEW: Little Shield Icon (White)
-        gfx.fillStyle(0xffffff, 1);
-        gfx.beginPath();
-        gfx.moveTo(0, 0);    // Top left
-        gfx.lineTo(12, 0);   // Top right
-        gfx.lineTo(12, 6);   // Middle right
-        gfx.lineTo(6, 14);   // Bottom point
-        gfx.lineTo(0, 6);    // Middle left
-        gfx.closePath();
-        gfx.fillPath();
-        gfx.generateTexture('shield_icon', 12, 14);
 
         // 9. Boss Laser (Orange/Red oval)
         gfx.fillStyle(0xff5500, 1);
@@ -841,6 +860,15 @@ class MainScene extends Phaser.Scene {
                 repeat: 0     // 0 means it only plays exactly once, which is what we want!
             });
         }
+
+        // --- NEW: DYNAMIC MOBILE SCALING ---
+        const isMobile = this.cameras.main.width < 600;
+
+        // Make entities 50% smaller on mobile to keep the screen feeling spacious!
+        this.entityScale = isMobile ? 0.5 : 1.0;
+
+        // Slow down the speed proportionally so it takes the same amount of time to cross the screen
+        this.playerSpeed = isMobile ? 180 : 300;
 
         // 1. Setup Player 
         const centerX = this.cameras.main.centerX;
@@ -952,18 +980,27 @@ class MainScene extends Phaser.Scene {
     }
 
     shootLaser() {
-        if (this.hasDoubleLaser) {
-            // DOUBLE CANNONS: Spawn two lasers slightly offset from the center
-            let laser1 = this.lasers.get(this.player.x - 12, this.player.y - 20);
-            let laser2 = this.lasers.get(this.player.x + 12, this.player.y - 20);
+        // Adjust the offset so the lasers spawn closer to the shrunken ship's nose
+        let yOffset = this.entityScale < 1 ? 10 : 20;
 
-            if (laser1) { laser1.setActive(true).setVisible(true).body.setVelocityY(-600); }
-            if (laser2) { laser2.setActive(true).setVisible(true).body.setVelocityY(-600); }
+        if (this.hasDoubleLaser) {
+            let laser1 = this.lasers.get(this.player.x - 12, this.player.y - yOffset);
+            let laser2 = this.lasers.get(this.player.x + 12, this.player.y - yOffset);
+
+            if (laser1) {
+                laser1.setActive(true).setVisible(true).setScale(this.entityScale);
+                laser1.body.setVelocityY(-600);
+            }
+            if (laser2) {
+                laser2.setActive(true).setVisible(true).setScale(this.entityScale);
+                laser2.body.setVelocityY(-600);
+            }
         } else {
-            // STANDARD CANNON
-            let laser = this.lasers.get(this.player.x, this.player.y - 20);
+            let laser = this.lasers.get(this.player.x, this.player.y - yOffset);
             if (laser) {
-                laser.setActive(true).setVisible(true).body.setVelocityY(-500);
+                laser.setActive(true).setVisible(true).setScale(this.entityScale);
+                // Slower laser speed on mobile so it doesn't instantly vanish
+                laser.body.setVelocityY(this.entityScale < 1 ? -300 : -500);
             }
         }
     }
@@ -976,7 +1013,12 @@ class MainScene extends Phaser.Scene {
         let enemy = this.enemies.create(randomX, -32, 'EnemyRobot');
 
         if (enemy) {
-            enemy.setVelocityY(100); // Move downwards slowly
+            // Apply the mobile scale to the robot!
+            enemy.setScale(this.entityScale);
+
+            // Adjust fall speed: 60 on mobile, 100 on desktop
+            let fallSpeed = this.entityScale < 1 ? 60 : 100;
+            enemy.setVelocityY(fallSpeed);
         }
     }
 
@@ -1001,19 +1043,23 @@ class MainScene extends Phaser.Scene {
         // 1. Destroy the enemy that crashed into the ship
         enemy.destroy();
 
-        // --- FIREWALL ABSORPTION LOGIC ---
-        if (this.hasFirewall) {
-            this.firewallHits++;
+        // --- NEW: FIREWALL/SHIELD ABSORPTION LOGIC ---
+        if (this.activeShields > 0) {
+            this.activeShields--;
 
-            if (this.firewallHits === 1) {
-                // First Hit: Flash the firewall white to show it absorbed the impact
-                this.firewallVisual.setFillStyle(0xffffff, 0.6);
-                this.time.delayedCall(150, () => this.firewallVisual.setFillStyle(0x0088ff, 0.3));
-                return; // EXIT EARLY! Do not take a heart away!
-            } else {
-                // Second Hit: Reset the counter and let the code below take a heart
-                this.firewallHits = 0;
+            // Pop the last shield image off the UI array and destroy it
+            if (this.shieldIcons.length > 0) {
+                let lostShield = this.shieldIcons.pop();
+                lostShield.destroy();
             }
+
+            // Flash the player Cyan to show the shield absorbed it!
+            this.player.setTint(0x00ffff);
+            this.time.delayedCall(200, () => {
+                if (this.health > 0) this.player.clearTint();
+            });
+
+            return; // EXIT EARLY! Do not take a heart away!
         }
 
         // 2. Decrease the player's health
@@ -1055,6 +1101,19 @@ class MainScene extends Phaser.Scene {
         // NEW: Check if the screen is narrow (mobile)
         const isMobile = cam.width < 600;
 
+        // --- NEW: DYNAMIC PLAYER SCALING ---
+        // Save the scale and speed to the class so the spawner and update loop can use them
+        this.entityScale = isMobile ? 0.5 : 1.0;
+        this.playerSpeed = isMobile ? 180 : 300;
+
+        // Safely scale the player ship if it currently exists
+        if (this.player && this.player.active) {
+            this.player.setScale(this.entityScale);
+
+            // Optional: Shrink the physics hitbox slightly so close calls feel fair!
+            this.player.body.setSize(this.player.width * 0.8, this.player.height * 0.8);
+        }
+
         // --- TOP BAR SIZING & POSITIONING ---
         const topBarHeight = cam.height * 0.06;
 
@@ -1083,6 +1142,20 @@ class MainScene extends Phaser.Scene {
 
             // Because the heart origin is right-aligned (1), we calculate its left edge like this:
             lastHeartLeftEdge = heartX - heartSize;
+        }
+
+        // --- NEW: POSITION THE SHIELDS UNDER THE HEARTS ---
+        // This dynamically loops through however many shields the player has left!
+        for (let i = 0; i < this.shieldIcons.length; i++) {
+
+            // Make them the same size as the hearts
+            this.shieldIcons[i].setDisplaySize(heartSize, heartSize);
+
+            let shieldX = startX - (i * heartSpacing);
+
+            // Position them right BELOW the hearts!
+            let yOffset = (topBarHeight / 2) + heartSize + (isMobile ? 5 : 10);
+            this.shieldIcons[i].setPosition(shieldX, yOffset);
         }
 
         // --- POSITION SCORE (RIGHT-ALIGNED) ---
@@ -1232,49 +1305,90 @@ class MainScene extends Phaser.Scene {
         });
     }
 
-    triggerAds() {
-        this.currentPhase = 3; // Move to Phase 6
-        this.adsGivenTime = this.time.now; // Start the 10-second survival clock
+    triggerAds() { // Note: Removed 'currentTime' parameter if you fixed that earlier!
+        this.currentPhase = 3;
+        this.adsGivenTime = this.time.now;
 
         const cam = this.cameras.main;
+        const isMobile = cam.width < 600;
 
-        // --- NEW: INITIALIZE THE ARRAY ---
-        // This is where we will store the ads so the blocker can find them later!
+        // --- 1. DYNAMIC AD SETTINGS ---
+        const maxAds = isMobile ? 3 : 5;
+        const snapDistance = isMobile ? 16 : 32; // Pixels to jump
+
+        // We want the ad to cover ~25% of the screen area. 
+        // That means the ad width should be roughly 50% of the screen width!
+        const targetAdWidth = isMobile ? cam.width * 0.40 : cam.width * 0.25;
+
+        // Minimum distance between ads to prevent heavy overlapping
+        const minDistance = targetAdWidth * 0.7;
+
         this.adImages = [];
-
-        // Put our three image names into a list
         const adKeys = ['ad_1', 'ad_2', 'ad_3'];
 
-        // Loop through the list and spawn one of each!
-        adKeys.forEach((adKey) => {
-            // Pick a random spot on the screen (leaving a little padding from the edges)
-            let randomX = Phaser.Math.Between(cam.width * 0.2, cam.width * 0.8);
-            let randomY = Phaser.Math.Between(cam.height * 0.2, cam.height * 0.8);
+        // --- 2. SPAWN WITH ANTI-OVERLAP ---
+        for (let i = 0; i < maxAds; i++) {
+            // Loop through our 3 ad images (0, 1, 2, 0, 1...)
+            let adKey = adKeys[i % adKeys.length];
 
-            // Create the ad image
+            let randomX, randomY;
+            let validPosition = false;
+            let attempts = 0;
+
+            // Keep picking random spots until we find one that isn't too close to another ad
+            // (Max 15 attempts so the game doesn't freeze if the screen gets too full)
+            while (!validPosition && attempts < 15) {
+                randomX = Phaser.Math.Between(cam.width * 0.2, cam.width * 0.8);
+                randomY = Phaser.Math.Between(cam.height * 0.2, cam.height * 0.8);
+                validPosition = true;
+
+                for (let existingAd of this.adImages) {
+                    let dist = Phaser.Math.Distance.Between(randomX, randomY, existingAd.x, existingAd.y);
+                    if (dist < minDistance) {
+                        validPosition = false;
+                        break;
+                    }
+                }
+                attempts++;
+            }
+
+            // Create the ad and scale it to hit that sweet 25% screen coverage!
             let ad = this.add.image(randomX, randomY, adKey).setDepth(200);
+            let scaleFactor = targetAdWidth / ad.width;
+            ad.setScale(scaleFactor);
 
-            // Optional: Scale it down if your real ad images are massive
-            // ad.setScale(0.5); 
-
-            // --- NEW: SAVE THE AD TO THE ARRAY ---
+            // Save the original X position so we can snap back and forth from it
+            ad.baseX = ad.x;
             this.adImages.push(ad);
+        }
+
+        // --- 3. THE SNAP GLITCH EFFECT ---
+        // Every 300ms, teleport the ads to the right, or back to the left!
+        this.adSnapTimer = this.time.addEvent({
+            delay: 300,
+            callback: () => {
+                this.adImages.forEach(ad => {
+                    if (ad && ad.active) {
+                        ad.x = (ad.x === ad.baseX) ? ad.baseX + snapDistance : ad.baseX;
+                    }
+                });
+            },
+            callbackScope: this,
+            loop: true
         });
 
-        // 2. Trigger Green Hoodie's Dialogue
+        // --- 4. DIALOGUE ---
         this.dialogue.startDialogue([{
             character: 'James',
             text: "You won't believe it but the wild AI robots have developed some ads that can block your view... like seriously?...",
             waitForSpacebar: false
         }]);
 
-        // Auto-close text after 10 seconds
-        this.time.delayedCall(10000, () => {
+        this.time.delayedCall(8000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'James') {
                 this.dialogue.next();
             }
         });
-
     }
 
     triggerAdblocker() {
@@ -1297,29 +1411,37 @@ class MainScene extends Phaser.Scene {
         // 2. Wait exactly 2 seconds, then execute the Adblocker wipe!
         this.time.delayedCall(2000, () => {
 
-            // Show the Adblocker shield pop up from the ship
-            let blockerIcon = this.add.image(this.player.x, this.player.y - 40, 'adblocker_icon').setDepth(96);
+            const isMobile = this.cameras.main.width < 600;
 
-            // Animate it floating up and fading out
+            // --- FIXED: DEPTH ---
+            // The ads are at depth 200, so setting this to 250 guarantees it pops up ON TOP!
+            let blockerIcon = this.add.image(this.player.x, this.player.y - 40, 'adblocker_icon').setDepth(250);
+
+            // --- FIXED: SCALING ---
+            // Keep it normal size on mobile, but make it 3x larger on desktop
+            blockerIcon.setScale(isMobile ? 1 : 3);
+
+            // --- FIXED: DURATION ---
             this.tweens.add({
                 targets: blockerIcon,
-                y: this.player.y - 100,
+                // Move it slightly higher on desktop since the icon is so much bigger
+                y: this.player.y - (isMobile ? 100 : 180),
                 alpha: 0,
-                duration: 1500,
+                duration: 2500, // Changed from 1500 to 2500 (1 full second longer!)
                 onComplete: () => blockerIcon.destroy()
             });
+
+            // Stop the snap effect timer so the ads stop vibrating
+            if (this.adSnapTimer) this.adSnapTimer.remove();
 
             // Destroy the ads one by one with a 1-second delay between each
             this.adImages.forEach((ad, index) => {
                 this.time.delayedCall(index * 1000, () => {
-                    ad.destroy();
+                    if (ad && ad.active) ad.destroy();
                 });
             });
 
-            // Clear the array
             this.adImages = [];
-
-            // NEW: Start the crazy final wave exactly as the ads clear!
         });
     }
 
@@ -1348,57 +1470,100 @@ class MainScene extends Phaser.Scene {
     }
 
     triggerAntivirus() {
-        this.currentPhase = 6; // Move to Phase 5
-        this.controlsReversed = false; // Fix the controls!
-        this.hasAntivirus = true;
+        this.currentPhase = 6;
 
-        // NEW: Record the time the Antivirus was given!
-        this.antivirusGivenTime = this.time.now;
-
-        // 1. Draw the Antivirus Visuals (Rounded square & Shield)
-        this.antivirusVisual = this.add.image(this.player.x, this.player.y, 'antivirus_aura').setDepth(11);
-        this.antivirusShield = this.add.image(this.player.x - 16, this.player.y - 16, 'shield_icon').setDepth(12);
-
-        // 2. Show the Comms Dialogue
+        // 1. Show the Comms Dialogue FIRST
         this.dialogue.startDialogue([{
             character: 'Robbin_comms',
             text: "We have built and sent an antivirus update for your spaceship!! This will turn your controls back to normal.",
             waitForSpacebar: false
         }]);
 
-        // 3. Auto-close the text balloon after 6 seconds
+        // 2. Auto-close the text balloon after 10 seconds
         this.time.delayedCall(10000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'Robbin_comms') {
                 this.dialogue.next();
             }
         });
+
+        // 3. Wait exactly 3 seconds, THEN apply the fix and show the central pop-up!
+        this.time.delayedCall(3000, () => {
+            this.controlsReversed = false; // Fix controls!
+            this.hasAntivirus = true;
+            this.antivirusGivenTime = this.time.now; // Start clock for the next phase
+
+            const cam = this.cameras.main;
+            const isMobile = cam.width < 600;
+
+            // --- FIXED: THE CENTRAL POP-UP ---
+            let antiPopup = this.add.image(cam.centerX, cam.centerY, 'antivirus_popup').setDepth(250);
+
+            // Make the desktop icon smaller (Scale 2 instead of 3)
+            antiPopup.setScale(isMobile ? 1 : 2);
+
+            this.tweens.add({
+                targets: antiPopup,
+                y: cam.centerY - 50, // Float up slightly from the center of the screen
+                alpha: 0,
+                duration: 2500,
+                onComplete: () => antiPopup.destroy()
+            });
+        });
     }
 
     triggerFirewall() {
-        this.currentPhase = 7; // Move to Phase 3
-        this.hasFirewall = true;
-        this.firewallHits = 0; // Reset hit counter
+        this.currentPhase = 7;
 
-        // NEW: Start the 20-second clock for the Virus!
-        this.firewallGivenTime = this.time.now;
-
-        // 1. Draw the transparent blue firewall circle
-        this.firewallVisual = this.add.circle(this.player.x, this.player.y, 35, 0x0088ff, 0.3);
-        this.firewallVisual.setStrokeStyle(2, 0x00ffff); // Glowing cyan border
-        this.firewallVisual.setDepth(10); // Keep it just above the player
-
-        // 2. Show the Green Hoodie Guy dialogue
+        // 1. Show the Green Hoodie Guy dialogue FIRST
         this.dialogue.startDialogue([{
-            character: 'James', // Matches your DialogueManager portrait key
+            character: 'James',
             text: "We have built a firewall shield for your spaceship to make it stronger and last longer!",
-            waitForSpacebar: false // False so they don't have to stop playing to read it
+            waitForSpacebar: false
         }]);
 
-        // 3. Auto-close the text balloon after 10 seconds so it clears their screen
+        // 2. Auto-close the text balloon after 6 seconds
         this.time.delayedCall(6000, () => {
             if (this.dialogue.currentMessage && this.dialogue.currentMessage.character === 'James') {
                 this.dialogue.next();
             }
+        });
+
+        // 3. Wait exactly 3 seconds, THEN apply the shields and show the central pop-up!
+        this.time.delayedCall(3000, () => {
+            this.hasFirewall = true;
+            this.firewallGivenTime = this.time.now; // Start clock for the final wave
+
+            const cam = this.cameras.main;
+            const isMobile = cam.width < 600;
+
+            // --- FIXED: THE CENTRAL POP-UP ---
+            // Reusing your 'blue_shield' image for the big central notification
+            let shieldPopup = this.add.image(cam.centerX, cam.centerY, 'blue_shield').setDepth(250);
+
+            // Make the desktop icon smaller (Scale 2 instead of 3)
+            shieldPopup.setScale(isMobile ? 1 : 2);
+
+            this.tweens.add({
+                targets: shieldPopup,
+                y: cam.centerY - 50, // Float up slightly from the center of the screen
+                alpha: 0,
+                duration: 2500,
+                onComplete: () => shieldPopup.destroy()
+            });
+
+            // --- SPAWN THE 3 UI SHIELDS ---
+            this.activeShields = 3;
+
+            for (let i = 0; i < 3; i++) {
+                let shield = this.add.image(0, 0, 'blue_shield');
+                shield.setOrigin(1, 0.5); // Right-aligned just like the hearts!
+
+                this.shieldIcons.push(shield);
+                this.uiContainer.add(shield);
+            }
+
+            // Force the UI to recalculate so the shields snap to the top right immediately!
+            this.resizeUI();
         });
     }
 
@@ -1514,7 +1679,7 @@ class MainScene extends Phaser.Scene {
         const barX = cam.centerX - (barWidth / 2);
         const barY = cam.height * 0.08; // Just below the top bar
 
-        this.bossBarBg = this.add.rectangle(barX, barY, barWidth, barHeight, 0x333333).setOrigin(0, 0).setStrokeStyle(2, 0x000000);
+        this.bossBarBg = this.add.rectangle(barX, barY, barWidth, barHeight, 0x333333).setOrigin(0, 0).setStrokeStyle(1, 0x000000);
 
         // Health Bar Fill (Red)
         this.bossBarFill = this.add.rectangle(barX, barY, barWidth, barHeight, 0xff0000).setOrigin(0, 0);
@@ -1634,7 +1799,7 @@ class MainScene extends Phaser.Scene {
         // 3. Update the Health Bar width
         const healthPercent = Math.max(0, this.bossHealth / this.bossMaxHealth);
         const barWidth = this.cameras.main.width * 0.6;
-        this.bossBarFill.setSize(barWidth * healthPercent, 20);
+        this.bossBarFill.setSize(barWidth * healthPercent, 10);
 
         // NEW: Check for Phase 2 Trigger (90% Health)
         if (!this.phase2Triggered && this.bossHealth <= (this.bossMaxHealth * 0.90)) {
@@ -1999,26 +2164,38 @@ class MainScene extends Phaser.Scene {
             // --- TOUCH CONTROLS ---
             this.input.manager.pointers.forEach(pointer => {
                 if (pointer.isDown) {
-                    if (pointer.x < this.cameras.main.width / 2) {
-                        this.physics.moveTo(this.player, pointer.x, pointer.y, this.playerSpeed);
 
-                        const distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, pointer.x, pointer.y);
+                    // CHANGED: Use pointer.downX to check where the touch STARTED, 
+                    // instead of pointer.x (where the finger is currently).
+                    if (pointer.downX < this.cameras.main.width / 2) {
 
-                        // --- THE FIX ---
-                        // Only trigger the booster if the ship is actually far enough away to travel!
-                        if (distance > 15) {
+                        // Calculate how far the finger has dragged from its original tap position
+                        let dragX = pointer.x - pointer.downX;
+                        let dragY = pointer.y - pointer.downY;
+                        let dragDistance = Math.sqrt(dragX * dragX + dragY * dragY);
+
+                        // If they dragged their finger far enough to register intent (a 10px "deadzone")
+                        if (dragDistance > 10) {
                             isMoving = true;
 
+                            // Normalize the vector (find the direction) and multiply by player speed
+                            let velocityX = (dragX / dragDistance) * this.playerSpeed;
+                            let velocityY = (dragY / dragDistance) * this.playerSpeed;
+
                             if (this.controlsReversed) {
-                                this.player.body.velocity.x *= -1;
-                                this.player.body.velocity.y *= -1;
+                                velocityX *= -1;
+                                velocityY *= -1;
                             }
+
+                            this.player.setVelocity(velocityX, velocityY);
                         } else {
+                            // The finger is just resting on the tap point, so hover in place
                             this.player.setVelocity(0);
-                            // isMoving safely stays false here!
                         }
                     }
-                    if (pointer.x >= this.cameras.main.width / 2) {
+
+                    // Right half of the screen handles shooting
+                    if (pointer.downX >= this.cameras.main.width / 2) {
                         isShooting = true;
                     }
                 }
@@ -2091,8 +2268,14 @@ class MainScene extends Phaser.Scene {
 
         // --- MOVEMENT RESTRICTIONS (THE INVISIBLE BOUNDARIES) ---
         // 1. Calculate the limits based on the current canvas height
-        const minY = this.cameras.main.height * 0.45; // Cannot go higher than the top 40% mark
-        const maxY = this.cameras.main.height * 0.80; // Cannot go lower than the bottom 15% mark
+        const isMobile = this.cameras.main.width < 600;
+
+        const minY = this.cameras.main.height * 0.45; // Cannot go higher than the top 45% mark
+
+        // --- FIX: RAISED BOTTOM BOUNDARY FOR MOBILE ---
+        // On mobile, the dialogue box is taller. We restrict the ship to the top 70% 
+        // of the screen so it never slips behind the text box! On desktop, 80% is still fine.
+        const maxY = isMobile ? this.cameras.main.height * 0.77 : this.cameras.main.height * 0.80;
 
         // --- PHASE MANAGER PROGRESSION ---
         // Phase 1 to Phase 2 (Trigger AI Cloning when 5 enemies are defeated and 10s have passed)
@@ -2140,16 +2323,6 @@ class MainScene extends Phaser.Scene {
             if (time - this.firewallGivenTime >= 10000) {
                 this.triggerFinalWave();
             }
-        }
-
-        // Keep visual auras aligned with the ship
-        if (this.hasFirewall && this.firewallVisual) {
-            this.firewallVisual.setPosition(this.player.x, this.player.y);
-        }
-        if (this.hasAntivirus && this.antivirusVisual) {
-            this.antivirusVisual.setPosition(this.player.x, this.player.y);
-            // Put the shield in the top left corner of the aura
-            this.antivirusShield.setPosition(this.player.x - 18, this.player.y - 18);
         }
 
         // 2. Clamp the player's vertical position (ONLY IF NOT IN THE FINALE)
